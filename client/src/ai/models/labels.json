@@ -1,0 +1,63 @@
+{
+  "scenes": {
+    "garden": { "zh": "花园", "en": "Garden" },
+    "beach": { "zh": "海滩", "en": "Beach" },
+    "city": { "zh": "城市", "en": "City" },
+    "forest": { "zh": "森林", "en": "Forest" },
+    "mountain": { "zh": "山脉", "en": "Mountain" },
+    "lake": { "zh": "湖泊", "en": "Lake" },
+    "indoor": { "zh": "室内", "en": "Indoor" },
+    "palace": { "zh": "宫殿", "en": "Palace" },
+    "village": { "zh": "村庄", "en": "Village" },
+    "sunset": { "zh": "日落", "en": "Sunset" },
+    "night": { "zh": "夜晚", "en": "Night" },
+    "snow": { "zh": "雪景", "en": "Snow" }
+  },
+  "clothing": {
+    "dress_elegant": { "zh": "优雅连衣裙", "en": "Elegant Dress" },
+    "dress_casual": { "zh": "休闲连衣裙", "en": "Casual Dress" },
+    "dress_formal": { "zh": "正式礼服", "en": "Formal Dress" },
+    "hat_sun": { "zh": "遮阳帽", "en": "Sun Hat" },
+    "hat_crown": { "zh": "皇冠", "en": "Crown" },
+    "shoes_heels": { "zh": "高跟鞋", "en": "Heels" },
+    "shoes_boots": { "zh": "靴子", "en": "Boots" },
+    "accessory_necklace": { "zh": "项链", "en": "Necklace" },
+    "accessory_earrings": { "zh": "耳环", "en": "Earrings" },
+    "accessory_bracelet": { "zh": "手镯", "en": "Bracelet" },
+    "hair_long": { "zh": "长发", "en": "Long Hair" },
+    "hair_short": { "zh": "短发", "en": "Short Hair" },
+    "hair_braid": { "zh": "辫子", "en": "Braid" }
+  },
+  "actions": {
+    "standing": { "zh": "站立", "en": "Standing" },
+    "sitting": { "zh": "坐着", "en": "Sitting" },
+    "walking": { "zh": "行走", "en": "Walking" },
+    "running": { "zh": "奔跑", "en": "Running" },
+    "jumping": { "zh": "跳跃", "en": "Jumping" },
+    "dancing": { "zh": "跳舞", "en": "Dancing" },
+    "waving": { "zh": "挥手", "en": "Waving" },
+    "sleeping": { "zh": "睡觉", "en": "Sleeping" },
+    "eating": { "zh": " eating", "en": "Eating" },
+    "reading": { "zh": "阅读", "en": "Reading" }
+  },
+  "moods": {
+    "happy": { "zh": "开心", "en": "Happy" },
+    "sad": { "zh": "悲伤", "en": "Sad" },
+    "excited": { "zh": "兴奋", "en": "Excited" },
+    "calm": { "zh": "平静", "en": "Calm" },
+    "mysterious": { "zh": "神秘", "en": "Mysterious" },
+    "romantic": { "zh": "浪漫", "en": "Romantic" },
+    "playful": { "zh": "俏皮", "en": "Playful" },
+    "elegant": { "zh": "优雅", "en": "Elegant" }
+  },
+  "colors": {
+    "pink": { "zh": "粉色", "en": "Pink" },
+    "blue": { "zh": "蓝色", "en": "Blue" },
+    "red": { "zh": "红色", "en": "Red" },
+    "white": { "zh": "白色", "en": "White" },
+    "black": { "zh": "黑色", "en": "Black" },
+    "gold": { "zh": "金色", "en": "Gold" },
+    "purple": { "zh": "紫色", "en": "Purple" },
+    "green": { "zh": "绿色", "en": "Green" }
+  }
+}

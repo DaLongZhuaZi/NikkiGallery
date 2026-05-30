@@ -1,0 +1,48 @@
+{
+  "name": "nikki-gallery-server",
+  "version": "1.0.0",
+  "description": "NikkiGallery智能相册管理系统后端服务",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:migrate": "tsx src/database/migrate.ts",
+    "db:seed": "tsx src/database/seed.ts",
+    "seed:tags": "tsx scripts/seed_nikki_tags.ts"
+  },
+  "dependencies": {
+    "archiver": "^8.0.0",
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "exif-reader": "^2.0.0",
+    "express": "^4.18.2",
+    "glob": "^10.3.10",
+    "helmet": "^7.1.0",
+    "koffi": "^3.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
+    "p-queue": "^7.4.1",
+    "sharp": "^0.33.2",
+    "sql.js": "^1.9.0",
+    "unzipper": "^0.12.3",
+    "uuid": "^9.0.0",
+    "winston": "^3.11.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/archiver": "^7.0.0",
+    "@types/compression": "^1.7.5",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/morgan": "^1.9.9",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^20.10.0",
+    "@types/sql.js": "^1.4.11",
+    "@types/unzipper": "^0.10.11",
+    "@types/uuid": "^9.0.7",
+    "tsx": "^4.6.2",
+    "typescript": "^5.3.2"
+  }
+}

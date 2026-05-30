@@ -1,0 +1,49 @@
+# Dependencies
+node_modules
+*/node_modules
+
+# Build artifacts
+*/dist
+*/build
+
+# Development files
+.git
+.gitignore
+.env
+.env.*
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs
+
+# Test files
+test
+tests
+__tests__
+*.test.ts
+*.test.js
+
+# Documentation
+docs
+*.md
+!README.md
+
+# Docker files (don't need to be in context)
+docker
+Dockerfile*
+docker-compose*.yml
+
+# Temporary files
+tmp
+temp
+.tmp

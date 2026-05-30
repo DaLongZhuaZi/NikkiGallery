@@ -1,0 +1,17 @@
+{
+  "name": "nikki-gallery-manager",
+  "version": "1.0.0",
+  "description": "NikkiGallery Web管理面板 - 本地服务管理与日志查看",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js --dev"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.16.0",
+    "tree-kill": "^1.2.2"
+  },
+  "author": "NikkiGallery",
+  "license": "MIT"
+}

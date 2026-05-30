@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NikkiGallery 管理面板</title>
+  <style>
+    :root {
+      --primary: #FF6B9D;
+      --primary-dark: #E8558A;
+      --bg: #1a1a2e;
+      --card: #16213e;
+      --text: #eaeaea;
+      --success: #00d4aa;
+      --warning: #ffd93d;
+      --error: #ff6b6b;
+      --border: #2a2a4a;
+      --ai-accent: #845EC2;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .header {
+      background: linear-gradient(135deg, var(--primary) 0%, #845EC2 100%);
+      padding: 20px 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+
+    .header h1 {
+      font-size: 24px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header .status-badge {
+      background: rgba(255,255,255,0.2);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 30px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 24px;
+      border: 1px solid var(--border);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+    }
+
+    .card.card-ai {
+      border-color: rgba(132, 94, 194, 0.3);
+    }
+
+    .card.card-ai:hover {
+      border-color: rgba(132, 94, 194, 0.6);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .status-running { background: var(--success); box-shadow: 0 0 10px var(--success); }
+    .status-stopped { background: var(--error); }
+    .status-starting { background: var(--warning); animation: pulse 1s infinite; }
+    .status-error { background: var(--error); box-shadow: 0 0 10px var(--error); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .service-info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .info-item {
+      background: rgba(255,255,255,0.05);
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    .info-label {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+
+    .info-value {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-dark);
+    }
+
+    .btn-success {
+      background: var(--success);
+      color: #1a1a2e;
+    }
+
+    .btn-success:hover {
+      background: #00b894;
+    }
+
+    .btn-danger {
+      background: var(--error);
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #ee5a5a;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .btn-outline:hover {
+      background: rgba(255,255,255,0.1);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .global-actions {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+
+    .global-actions .btn {
+      flex: none;
+      padding: 14px 28px;
+    }
+
+    .log-section {
+      background: var(--card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .log-header {
+      padding: 16px 20px;
+      background: rgba(255,255,255,0.05);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .log-tabs {
+      display: flex;
+      gap: 5px;
+    }
+
+    .log-tab {
+      padding: 8px 16px;
+      border: none;
+      background: transparent;
+      color: #888;
+      cursor: pointer;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .log-tab:hover {
+      color: var(--text);
+      background: rgba(255,255,255,0.05);
+    }
+
+    .log-tab.active {
+      background: var(--primary);
+      color: white;
+    }
+
+    .log-container {
+      height: 400px;
+      overflow-y: auto;
+      padding: 15px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .log-entry {
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .log-time {
+      color: #666;
+      margin-right: 10px;
+    }
+
+    .log-info { color: var(--text); }
+    .log-error { color: var(--error); }
+    .log-warn { color: var(--warning); }
+
+    .log-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .quick-links {
+      margin-top: 30px;
+      background: var(--card);
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid var(--border);
+    }
+
+    .quick-links h3 {
+      margin-bottom: 15px;
+      font-size: 16px;
+    }
+
+    .link-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+    }
+
+    .link-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      color: var(--text);
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+
+    .link-item:hover {
+      background: rgba(255,255,255,0.1);
+    }
+
+    .port-badge {
+      background: var(--primary);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .port-badge.ai {
+      background: var(--ai-accent);
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 15px 20px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s;
+      z-index: 1000;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .section-title {
+      font-size: 14px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+      padding-left: 4px;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        padding: 15px;
+      }
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      .global-actions {
+        flex-wrap: wrap;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>🎮 NikkiGallery 管理面板</h1>
+    <div class="status-badge" id="connectionStatus">● 已连接</div>
+  </header>
+
+  <div class="container">
+    <!-- 全局操作 -->
+    <div class="global-actions">
+      <button class="btn btn-success" onclick="startAll()">▶ 全部启动</button>
+      <button class="btn btn-danger" onclick="stopAll()">■ 全部停止</button>
+      <button class="btn btn-primary" onclick="openFrontend()" id="openFrontendBtn">🌐 打开前端</button>
+      <button class="btn btn-outline" onclick="refreshStatus()">🔄 刷新状态</button>
+    </div>
+
+    <!-- 服务卡片 -->
+    <div class="grid">
+      <!-- 后端服务 -->
+      <div class="card" id="serverCard">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="status-dot" id="serverStatusDot"></span>
+            后端服务 (API)
+          </div>
+          <span id="serverStatusText" style="font-size: 14px; color: #888;">已停止</span>
+        </div>
+        <div class="service-info">
+          <div class="info-item">
+            <div class="info-label">端口</div>
+            <div class="info-value" id="serverPortDisplay">-</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">日志数量</div>
+            <div class="info-value" id="serverLogCount">0</div>
+          </div>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-success" id="serverStartBtn" onclick="startService('server')">▶ 启动</button>
+          <button class="btn btn-danger" id="serverStopBtn" onclick="stopService('server')">■ 停止</button>
+          <button class="btn btn-outline" onclick="restartService('server')">↻ 重启</button>
+        </div>
+      </div>
+
+      <!-- AI 服务 -->
+      <div class="card card-ai" id="aiServiceCard">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="status-dot" id="aiServiceStatusDot"></span>
+            AI 服务 (识别)
+          </div>
+          <span id="aiServiceStatusText" style="font-size: 14px; color: #888;">已停止</span>
+        </div>
+        <div class="service-info">
+          <div class="info-item">
+            <div class="info-label">端口</div>
+            <div class="info-value" id="aiServicePortDisplay">-</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">日志数量</div>
+            <div class="info-value" id="aiServiceLogCount">0</div>
+          </div>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-success" id="aiServiceStartBtn" onclick="startService('aiService')">▶ 启动</button>
+          <button class="btn btn-danger" id="aiServiceStopBtn" onclick="stopService('aiService')">■ 停止</button>
+          <button class="btn btn-outline" onclick="restartService('aiService')">↻ 重启</button>
+        </div>
+      </div>
+
+      <!-- 前端服务 -->
+      <div class="card" id="clientCard">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="status-dot" id="clientStatusDot"></span>
+            前端服务 (UI)
+          </div>
+          <span id="clientStatusText" style="font-size: 14px; color: #888;">已停止</span>
+        </div>
+        <div class="service-info">
+          <div class="info-item">
+            <div class="info-label">端口</div>
+            <div class="info-value" id="clientPortDisplay">-</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">日志数量</div>
+            <div class="info-value" id="clientLogCount">0</div>
+          </div>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-success" id="clientStartBtn" onclick="startService('client')">▶ 启动</button>
+          <button class="btn btn-danger" id="clientStopBtn" onclick="stopService('client')">■ 停止</button>
+          <button class="btn btn-outline" onclick="restartService('client')">↻ 重启</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 日志区域 -->
+    <div class="log-section">
+      <div class="log-header">
+        <div class="log-tabs">
+          <button class="log-tab active" onclick="switchLogTab('server', this)">后端日志</button>
+          <button class="log-tab" onclick="switchLogTab('aiService', this)">AI 日志</button>
+          <button class="log-tab" onclick="switchLogTab('client', this)">前端日志</button>
+        </div>
+        <div class="log-actions">
+          <button class="btn btn-outline" onclick="clearLogs()">🗑 清空日志</button>
+          <button class="btn btn-outline" onclick="scrollToBottom()">⬇ 滚动到底部</button>
+        </div>
+      </div>
+      <div class="log-container" id="logContainer">
+        <div class="log-entry">
+          <span class="log-time">--:--:--</span>
+          <span class="log-info">等待日志输出...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 快捷链接 -->
+    <div class="quick-links">
+      <h3>🔗 快捷访问</h3>
+      <div class="link-grid" id="quickLinksGrid">
+        <!-- 由JS动态生成 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 通知 -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let currentLogService = 'server';
+    let ws = null;
+    let reconnectAttempts = 0;
+    let portConfig = { server: 14000, client: 13000, aiService: 15000, management: 19527 };
+
+    // 服务名称映射
+    const SERVICE_NAMES = {
+      server: '后端服务',
+      client: '前端服务',
+      aiService: 'AI 服务'
+    };
+
+    // 获取端口配置
+    async function fetchPorts() {
+      try {
+        const response = await fetch('/api/ports');
+        portConfig = await response.json();
+        updatePortDisplay();
+      } catch (err) {
+        console.error('获取端口配置失败:', err);
+        updatePortDisplay();
+      }
+    }
+
+    // 更新端口显示
+    function updatePortDisplay() {
+      // 更新服务卡片中的端口
+      const serverPortEl = document.getElementById('serverPortDisplay');
+      const clientPortEl = document.getElementById('clientPortDisplay');
+      const aiPortEl = document.getElementById('aiServicePortDisplay');
+      if (serverPortEl) serverPortEl.textContent = portConfig.server || '-';
+      if (clientPortEl) clientPortEl.textContent = portConfig.client || '-';
+      if (aiPortEl) aiPortEl.textContent = portConfig.aiService || '-';
+
+      // 更新快捷链接
+      const grid = document.getElementById('quickLinksGrid');
+      if (grid) {
+        grid.innerHTML = `
+          <a href="http://localhost:${portConfig.client}" target="_blank" class="link-item">
+            <span class="port-badge">${portConfig.client}</span>
+            前端界面
+          </a>
+          <a href="http://localhost:${portConfig.server}/api/albums" target="_blank" class="link-item">
+            <span class="port-badge">${portConfig.server}</span>
+            API 接口
+          </a>
+          <a href="http://localhost:${portConfig.client}/gallery" target="_blank" class="link-item">
+            <span class="port-badge">${portConfig.client}</span>
+            相册页面
+          </a>
+          <a href="http://localhost:${portConfig.client}/ai-process" target="_blank" class="link-item">
+            <span class="port-badge">${portConfig.client}</span>
+            AI处理页面
+          </a>
+          <a href="http://localhost:${portConfig.aiService}/health" target="_blank" class="link-item">
+            <span class="port-badge ai">${portConfig.aiService}</span>
+            AI 健康检查
+          </a>
+          <a href="http://localhost:${portConfig.management}" target="_blank" class="link-item">
+            <span class="port-badge">${portConfig.management}</span>
+            管理面板
+          </a>
+        `;
+      }
+    }
+
+    // WebSocket 连接
+    function connectWebSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${window.location.host}`);
+      
+      ws.onopen = () => {
+        document.getElementById('connectionStatus').textContent = '● 已连接';
+        document.getElementById('connectionStatus').style.color = '#00d4aa';
+        reconnectAttempts = 0;
+      };
+      
+      ws.onclose = () => {
+        document.getElementById('connectionStatus').textContent = '○ 已断开';
+        document.getElementById('connectionStatus').style.color = '#ff6b6b';
+        
+        if (reconnectAttempts < 10) {
+          reconnectAttempts++;
+          setTimeout(connectWebSocket, 2000);
+        }
+      };
+      
+      ws.onerror = () => {
+        document.getElementById('connectionStatus').textContent = '✕ 连接错误';
+        document.getElementById('connectionStatus').style.color = '#ff6b6b';
+      };
+      
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'log') {
+          if (data.data.service === currentLogService) {
+            appendLog(data.data.log);
+          }
+          updateLogCount(data.data.service);
+        } else if (data.type === 'status') {
+          updateServiceStatus(data.data);
+        } else if (data.type === 'log-clear') {
+          if (data.data.service === currentLogService) {
+            document.getElementById('logContainer').innerHTML = '';
+          }
+        }
+      };
+    }
+
+    // 刷新状态
+    async function refreshStatus() {
+      try {
+        const response = await fetch('/api/status');
+        const data = await response.json();
+        
+        for (const [key, status] of Object.entries(data.services)) {
+          updateServiceStatus(status);
+        }
+        
+        showToast('状态已刷新');
+      } catch (err) {
+        showToast('刷新失败: ' + err.message, 'error');
+      }
+    }
+
+    // 更新服务状态 UI
+    function updateServiceStatus(service) {
+      const name = service.key;
+      if (!name) return;
+
+      const dot = document.getElementById(`${name}StatusDot`);
+      const text = document.getElementById(`${name}StatusText`);
+      if (!dot || !text) return;
+      
+      dot.className = 'status-dot';
+      
+      switch (service.status) {
+        case 'running':
+          dot.classList.add('status-running');
+          if (service.external) {
+            text.textContent = '外部运行';
+            text.style.color = '#4ecdc4';
+          } else {
+            text.textContent = '运行中';
+            text.style.color = '#00d4aa';
+          }
+          break;
+        case 'starting':
+          dot.classList.add('status-starting');
+          text.textContent = '启动中...';
+          text.style.color = '#ffd93d';
+          break;
+        case 'error':
+          dot.classList.add('status-error');
+          text.textContent = '错误';
+          text.style.color = '#ff6b6b';
+          break;
+        default:
+          dot.classList.add('status-stopped');
+          text.textContent = '已停止';
+          text.style.color = '#ff6b6b';
+      }
+
+      // 更新端口显示
+      if (service.port) {
+        portConfig[name] = service.port;
+        const portEl = document.getElementById(`${name}PortDisplay`);
+        if (portEl) portEl.textContent = service.port;
+      }
+    }
+
+    // 启动服务
+    async function startService(service) {
+      try {
+        const response = await fetch(`/api/start/${service}`, { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+          showToast(`${SERVICE_NAMES[service] || service} 启动中...`);
+        }
+      } catch (err) {
+        showToast('启动失败: ' + err.message, 'error');
+      }
+    }
+
+    // 停止服务
+    async function stopService(service) {
+      try {
+        const response = await fetch(`/api/stop/${service}`, { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+          showToast(`${SERVICE_NAMES[service] || service} 停止中...`);
+        }
+      } catch (err) {
+        showToast('停止失败: ' + err.message, 'error');
+      }
+    }
+
+    // 重启服务
+    async function restartService(service) {
+      try {
+        const response = await fetch(`/api/restart/${service}`, { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+          showToast(`${SERVICE_NAMES[service] || service} 重启中...`);
+        }
+      } catch (err) {
+        showToast('重启失败: ' + err.message, 'error');
+      }
+    }
+
+    // 全部启动
+    async function startAll() {
+      try {
+        await fetch('/api/start-all', { method: 'POST' });
+        showToast('所有服务启动中...');
+      } catch (err) {
+        showToast('启动失败: ' + err.message, 'error');
+      }
+    }
+
+    // 全部停止
+    async function stopAll() {
+      try {
+        await fetch('/api/stop-all', { method: 'POST' });
+        showToast('所有服务停止中...');
+      } catch (err) {
+        showToast('停止失败: ' + err.message, 'error');
+      }
+    }
+
+    // 打开前端页面
+    async function openFrontend() {
+      try {
+        const response = await fetch('/api/open-frontend', { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+          showToast('正在打开前端页面...');
+        }
+      } catch (err) {
+        // 如果API调用失败，直接打开
+        window.open(`http://localhost:${portConfig.client}`, '_blank');
+      }
+    }
+
+    // 切换日志标签
+    async function switchLogTab(service, tab) {
+      currentLogService = service;
+      
+      document.querySelectorAll('.log-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      
+      // 加载对应服务的日志
+      try {
+        const response = await fetch(`/api/logs/${service}`);
+        const data = await response.json();
+        
+        const container = document.getElementById('logContainer');
+        container.innerHTML = '';
+        
+        data.logs.forEach(log => appendLog(log));
+      } catch (err) {
+        console.error('Failed to load logs:', err);
+      }
+    }
+
+    // 追加日志
+    function appendLog(log) {
+      const container = document.getElementById('logContainer');
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = `
+        <span class="log-time">${log.time}</span>
+        <span class="log-${log.type}">${escapeHtml(log.message)}</span>
+      `;
+      container.appendChild(entry);
+      
+      // 自动滚动
+      if (container.scrollTop + container.clientHeight >= container.scrollHeight - 50) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+
+    // 更新日志计数
+    function updateLogCount(service) {
+      const el = document.getElementById(`${service}LogCount`);
+      if (el) {
+        el.textContent = parseInt(el.textContent || '0') + 1;
+      }
+    }
+
+    // 清空日志
+    async function clearLogs() {
+      try {
+        await fetch(`/api/logs/${currentLogService}`, { method: 'DELETE' });
+        document.getElementById('logContainer').innerHTML = '';
+        const countEl = document.getElementById(`${currentLogService}LogCount`);
+        if (countEl) countEl.textContent = '0';
+        showToast('日志已清空');
+      } catch (err) {
+        showToast('清空失败: ' + err.message, 'error');
+      }
+    }
+
+    // 滚动到底部
+    function scrollToBottom() {
+      const container = document.getElementById('logContainer');
+      container.scrollTop = container.scrollHeight;
+    }
+
+    // Toast 通知
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.style.borderColor = type === 'error' ? 'var(--error)' : 'var(--success)';
+      toast.classList.add('show');
+      
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3000);
+    }
+
+    // HTML 转义
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // 初始化
+    fetchPorts();
+    connectWebSocket();
+    refreshStatus();
+  </script>
+</body>
+</html>

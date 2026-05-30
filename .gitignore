@@ -1,0 +1,81 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production
+build/
+dist/
+out/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Database
+data/db/*.db
+data/db/*.db-journal
+data/db/*.db-wal
+
+# Cache and thumbnails
+data/cache/
+data/thumbnails/
+server/data/thumbnails/
+server/data/nikki.db
+server/data/nikki.db-journal
+server/data/settings.json
+
+# Exports
+data/exports/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+.eggs/
+
+# Models (large files)
+ai-service/models/*.onnx
+ai-service/models/*.bin
+client/public/models/*.onnx
+
+# Temporary
+*.tmp
+*.temp
+
+# Agent
+.workbuddy/
+.claude/
+.codex/
+.antigravitycli/

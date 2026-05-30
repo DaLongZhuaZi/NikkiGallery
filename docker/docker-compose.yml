@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  # 前端服务
+  client:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.client
+    ports:
+      - "13000:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+  # 后端服务
+  server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+    ports:
+      - "14000:14000"
+    volumes:
+      - nikki-data:/app/data
+      - ${GAME_SCREENSHOTS_PATH:-./data/screenshots}:/app/screenshots:ro
+      - ${CUSTOM_ALBUMS_PATH:-./data/albums}:/app/albums
+    environment:
+      - NODE_ENV=production
+      - PORT=14000
+      - DB_PATH=/app/data/nikki.db
+      - THUMBNAILS_PATH=/app/data/thumbnails
+      - LOG_FILE=/app/data/logs/app.log
+      - GAME_SCREENSHOTS_PATH=/app/screenshots
+      - CUSTOM_ALBUMS_PATH=/app/albums
+    restart: unless-stopped
+
+volumes:
+  nikki-data:
+    driver: local
