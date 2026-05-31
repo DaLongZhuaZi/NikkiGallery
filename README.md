@@ -295,3 +295,4 @@ MIT License
 - [ONNX Runtime](https://onnxruntime.ai/) - AI推理引擎
 - [Tailwind CSS](https://tailwindcss.com/) - CSS框架
 - [Zustand](https://github.com/pmndrs/zustand) - 状态管理
+- [nikki_albums](https://github.com/RanAxro/nikki_albums) - 图像识别和数据参考
