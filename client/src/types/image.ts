@@ -14,6 +14,8 @@ export interface Image {
   userTags?: string[]
   description?: string
   favorite: boolean
+  cameraParams?: string
+  gameMetadata?: string
   createdAt: string
   updatedAt: string
 }
@@ -32,6 +34,8 @@ export interface ImageFilter {
   favorite?: boolean
   aiProcessed?: boolean
   search?: string
+  hasCoords?: boolean
+  clothesId?: number
   sortBy?: 'createdAt' | 'filename' | 'fileSize'
   sortOrder?: 'asc' | 'desc'
   page?: number

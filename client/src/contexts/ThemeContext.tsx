@@ -1,16 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 
-// 5种主题色方案 - 参考 nikki_albums
-export type ThemeMode = 'light' | 'dark' | 'sky-blue' | 'sakura-pink' | 'warm-yellow'
+export type ThemeMode = 'nikki-fantasy' | 'cyber-neon' | 'crystal-palace' | 'starry-night' | 'abyss-dark'
 
 interface ColorScheme {
-  // 基础色
   primary: string
   primaryHover: string
   primaryActive: string
   primaryLight: string
   
-  // 背景色
   bgMain: string
   bgCard: string
   bgSidebar: string
@@ -19,224 +16,237 @@ interface ColorScheme {
   bgActive: string
   bgInput: string
   
-  // 文字色
   textPrimary: string
   textSecondary: string
   textTertiary: string
   textInverse: string
   
-  // 边框色
   border: string
   borderLight: string
   borderFocus: string
   
-  // 状态色
   success: string
   warning: string
   error: string
   info: string
   
-  // 阴影
   shadowSm: string
   shadowMd: string
   shadowLg: string
   
-  // 特殊效果
   glassBg: string
   glassBorder: string
+  glassBlur: string
+  glassSaturate: string
+  
   gradientStart: string
   gradientEnd: string
 }
 
 const colorSchemes: Record<ThemeMode, ColorScheme> = {
-  light: {
-    primary: '#ec4899',
-    primaryHover: '#db2777',
-    primaryActive: '#be185d',
-    primaryLight: '#fdf2f8',
-    
-    bgMain: '#f8fafc',
-    bgCard: '#ffffff',
-    bgSidebar: 'rgba(255, 255, 255, 0.9)',
-    bgHeader: 'rgba(255, 255, 255, 0.8)',
-    bgHover: '#fdf2f8',
-    bgActive: '#fce7f3',
-    bgInput: '#ffffff',
-    
-    textPrimary: '#1e293b',
-    textSecondary: '#64748b',
-    textTertiary: '#94a3b8',
-    textInverse: '#ffffff',
-    
-    border: '#e2e8f0',
-    borderLight: '#f1f5f9',
-    borderFocus: '#ec4899',
-    
-    success: '#10b981',
-    warning: '#f59e0b',
-    error: '#ef4444',
-    info: '#3b82f6',
-    
-    shadowSm: '0 1px 2px rgba(0, 0, 0, 0.05)',
-    shadowMd: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-    shadowLg: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-    
-    glassBg: 'rgba(255, 255, 255, 0.8)',
-    glassBorder: 'rgba(236, 72, 153, 0.1)',
-    gradientStart: '#ec4899',
-    gradientEnd: '#8b5cf6',
-  },
-  
-  dark: {
+  'nikki-fantasy': {
     primary: '#f472b6',
     primaryHover: '#ec4899',
     primaryActive: '#db2777',
-    primaryLight: 'rgba(244, 114, 182, 0.1)',
-    
-    bgMain: '#0f172a',
-    bgCard: '#1e293b',
-    bgSidebar: 'rgba(30, 41, 59, 0.95)',
-    bgHeader: 'rgba(15, 23, 42, 0.9)',
-    bgHover: 'rgba(244, 114, 182, 0.08)',
-    bgActive: 'rgba(244, 114, 182, 0.15)',
-    bgInput: '#334155',
-    
-    textPrimary: '#f1f5f9',
-    textSecondary: '#94a3b8',
-    textTertiary: '#64748b',
-    textInverse: '#0f172a',
-    
-    border: '#334155',
-    borderLight: '#1e293b',
-    borderFocus: '#f472b6',
-    
-    success: '#34d399',
-    warning: '#fbbf24',
-    error: '#f87171',
-    info: '#60a5fa',
-    
-    shadowSm: '0 1px 2px rgba(0, 0, 0, 0.3)',
-    shadowMd: '0 4px 6px -1px rgba(0, 0, 0, 0.4)',
-    shadowLg: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
-    
-    glassBg: 'rgba(30, 41, 59, 0.8)',
-    glassBorder: 'rgba(244, 114, 182, 0.2)',
-    gradientStart: '#f472b6',
-    gradientEnd: '#a78bfa',
-  },
-  
-  'sky-blue': {
-    primary: '#0ea5e9',
-    primaryHover: '#0284c7',
-    primaryActive: '#0369a1',
-    primaryLight: '#f0f9ff',
-    
-    bgMain: '#f0f9ff',
-    bgCard: '#ffffff',
-    bgSidebar: 'rgba(255, 255, 255, 0.92)',
-    bgHeader: 'rgba(240, 249, 255, 0.85)',
-    bgHover: '#e0f2fe',
-    bgActive: '#bae6fd',
-    bgInput: '#ffffff',
-    
-    textPrimary: '#0c4a6e',
-    textSecondary: '#0369a1',
-    textTertiary: '#7dd3fc',
-    textInverse: '#ffffff',
-    
-    border: '#bae6fd',
-    borderLight: '#e0f2fe',
-    borderFocus: '#0ea5e9',
-    
-    success: '#10b981',
-    warning: '#f59e0b',
-    error: '#ef4444',
-    info: '#0ea5e9',
-    
-    shadowSm: '0 1px 2px rgba(14, 165, 233, 0.08)',
-    shadowMd: '0 4px 6px -1px rgba(14, 165, 233, 0.12)',
-    shadowLg: '0 10px 15px -3px rgba(14, 165, 233, 0.15)',
-    
-    glassBg: 'rgba(255, 255, 255, 0.85)',
-    glassBorder: 'rgba(14, 165, 233, 0.15)',
-    gradientStart: '#0ea5e9',
-    gradientEnd: '#6366f1',
-  },
-  
-  'sakura-pink': {
-    primary: '#e879a8',
-    primaryHover: '#d4567a',
-    primaryActive: '#c0385e',
-    primaryLight: '#fff1f5',
+    primaryLight: 'rgba(244, 114, 182, 0.15)',
     
     bgMain: '#fff5f7',
-    bgCard: '#ffffff',
-    bgSidebar: 'rgba(255, 255, 255, 0.92)',
-    bgHeader: 'rgba(255, 245, 247, 0.85)',
-    bgHover: '#ffe4ec',
-    bgActive: '#ffd1dc',
-    bgInput: '#ffffff',
+    bgCard: 'rgba(255, 255, 255, 0.65)',
+    bgSidebar: 'rgba(255, 255, 255, 0.75)',
+    bgHeader: 'rgba(255, 245, 247, 0.7)',
+    bgHover: 'rgba(255, 228, 236, 0.6)',
+    bgActive: 'rgba(255, 209, 220, 0.8)',
+    bgInput: 'rgba(255, 255, 255, 0.8)',
     
     textPrimary: '#4a1d35',
     textSecondary: '#8b4367',
     textTertiary: '#d4a0b5',
     textInverse: '#ffffff',
     
-    border: '#ffd1dc',
-    borderLight: '#ffe4ec',
-    borderFocus: '#e879a8',
+    border: 'rgba(255, 209, 220, 0.5)',
+    borderLight: 'rgba(255, 228, 236, 0.5)',
+    borderFocus: '#f472b6',
     
     success: '#10b981',
     warning: '#f59e0b',
     error: '#ef4444',
     info: '#e879a8',
     
-    shadowSm: '0 1px 2px rgba(232, 121, 168, 0.1)',
-    shadowMd: '0 4px 6px -1px rgba(232, 121, 168, 0.15)',
-    shadowLg: '0 10px 15px -3px rgba(232, 121, 168, 0.2)',
+    shadowSm: '0 2px 8px rgba(232, 121, 168, 0.1)',
+    shadowMd: '0 8px 24px rgba(232, 121, 168, 0.15)',
+    shadowLg: '0 16px 32px rgba(232, 121, 168, 0.2)',
     
-    glassBg: 'rgba(255, 255, 255, 0.85)',
-    glassBorder: 'rgba(232, 121, 168, 0.15)',
-    gradientStart: '#e879a8',
-    gradientEnd: '#c084fc',
+    glassBg: 'rgba(255, 255, 255, 0.4)',
+    glassBorder: 'rgba(255, 255, 255, 0.6)',
+    glassBlur: '12px',
+    glassSaturate: '150%',
+    
+    gradientStart: '#f472b6',
+    gradientEnd: '#818cf8',
   },
   
-  'warm-yellow': {
-    primary: '#f59e0b',
-    primaryHover: '#d97706',
-    primaryActive: '#b45309',
-    primaryLight: '#fffbeb',
+  'cyber-neon': {
+    primary: '#00f0ff',
+    primaryHover: '#00d0e0',
+    primaryActive: '#00b0c0',
+    primaryLight: 'rgba(0, 240, 255, 0.15)',
     
-    bgMain: '#fffbf0',
-    bgCard: '#ffffff',
-    bgSidebar: 'rgba(255, 255, 255, 0.92)',
-    bgHeader: 'rgba(255, 251, 240, 0.85)',
-    bgHover: '#fef3c7',
-    bgActive: '#fde68a',
-    bgInput: '#ffffff',
+    bgMain: '#050510',
+    bgCard: 'rgba(10, 10, 20, 0.7)',
+    bgSidebar: 'rgba(5, 5, 12, 0.85)',
+    bgHeader: 'rgba(5, 5, 15, 0.8)',
+    bgHover: 'rgba(0, 240, 255, 0.1)',
+    bgActive: 'rgba(0, 240, 255, 0.2)',
+    bgInput: 'rgba(20, 20, 35, 0.8)',
     
-    textPrimary: '#451a03',
-    textSecondary: '#92400e',
-    textTertiary: '#d4a574',
+    textPrimary: '#e0f8ff',
+    textSecondary: '#00f0ff',
+    textTertiary: '#ff003c',
+    textInverse: '#050510',
+    
+    border: 'rgba(0, 240, 255, 0.3)',
+    borderLight: 'rgba(255, 0, 60, 0.2)',
+    borderFocus: '#00f0ff',
+    
+    success: '#39ff14',
+    warning: '#ffed00',
+    error: '#ff003c',
+    info: '#00f0ff',
+    
+    shadowSm: '0 0 5px rgba(0, 240, 255, 0.2)',
+    shadowMd: '0 0 15px rgba(0, 240, 255, 0.3)',
+    shadowLg: '0 0 30px rgba(255, 0, 60, 0.4)',
+    
+    glassBg: 'rgba(5, 10, 20, 0.6)',
+    glassBorder: 'rgba(0, 240, 255, 0.2)',
+    glassBlur: '8px',
+    glassSaturate: '120%',
+    
+    gradientStart: '#00f0ff',
+    gradientEnd: '#ff003c',
+  },
+  
+  'crystal-palace': {
+    primary: '#2dd4bf',
+    primaryHover: '#14b8a6',
+    primaryActive: '#0f766e',
+    primaryLight: 'rgba(45, 212, 191, 0.15)',
+    
+    bgMain: '#f0fdfa',
+    bgCard: 'rgba(255, 255, 255, 0.5)',
+    bgSidebar: 'rgba(240, 253, 250, 0.6)',
+    bgHeader: 'rgba(255, 255, 255, 0.55)',
+    bgHover: 'rgba(204, 251, 241, 0.6)',
+    bgActive: 'rgba(153, 246, 228, 0.8)',
+    bgInput: 'rgba(255, 255, 255, 0.7)',
+    
+    textPrimary: '#0f766e',
+    textSecondary: '#14b8a6',
+    textTertiary: '#5eead4',
     textInverse: '#ffffff',
     
-    border: '#fde68a',
-    borderLight: '#fef3c7',
-    borderFocus: '#f59e0b',
+    border: 'rgba(153, 246, 228, 0.5)',
+    borderLight: 'rgba(204, 251, 241, 0.5)',
+    borderFocus: '#2dd4bf',
     
     success: '#10b981',
     warning: '#f59e0b',
     error: '#ef4444',
-    info: '#f59e0b',
+    info: '#2dd4bf',
     
-    shadowSm: '0 1px 2px rgba(245, 158, 11, 0.08)',
-    shadowMd: '0 4px 6px -1px rgba(245, 158, 11, 0.12)',
-    shadowLg: '0 10px 15px -3px rgba(245, 158, 11, 0.15)',
+    shadowSm: '0 2px 10px rgba(45, 212, 191, 0.1)',
+    shadowMd: '0 8px 30px rgba(45, 212, 191, 0.2)',
+    shadowLg: '0 16px 40px rgba(45, 212, 191, 0.3)',
     
-    glassBg: 'rgba(255, 255, 255, 0.85)',
-    glassBorder: 'rgba(245, 158, 11, 0.15)',
-    gradientStart: '#f59e0b',
-    gradientEnd: '#ef4444',
+    glassBg: 'rgba(255, 255, 255, 0.25)',
+    glassBorder: 'rgba(255, 255, 255, 0.7)',
+    glassBlur: '16px',
+    glassSaturate: '180%',
+    
+    gradientStart: '#2dd4bf',
+    gradientEnd: '#38bdf8',
+  },
+  
+  'starry-night': {
+    primary: '#a78bfa',
+    primaryHover: '#8b5cf6',
+    primaryActive: '#7c3aed',
+    primaryLight: 'rgba(167, 139, 250, 0.15)',
+    
+    bgMain: '#0f0c29',
+    bgCard: 'rgba(30, 27, 75, 0.6)',
+    bgSidebar: 'rgba(15, 12, 41, 0.8)',
+    bgHeader: 'rgba(20, 15, 50, 0.7)',
+    bgHover: 'rgba(139, 92, 246, 0.15)',
+    bgActive: 'rgba(139, 92, 246, 0.25)',
+    bgInput: 'rgba(46, 38, 109, 0.6)',
+    
+    textPrimary: '#f5f3ff',
+    textSecondary: '#c4b5fd',
+    textTertiary: '#8b5cf6',
+    textInverse: '#0f0c29',
+    
+    border: 'rgba(139, 92, 246, 0.3)',
+    borderLight: 'rgba(139, 92, 246, 0.15)',
+    borderFocus: '#a78bfa',
+    
+    success: '#34d399',
+    warning: '#fde047',
+    error: '#f87171',
+    info: '#60a5fa',
+    
+    shadowSm: '0 2px 10px rgba(139, 92, 246, 0.2)',
+    shadowMd: '0 8px 30px rgba(139, 92, 246, 0.3)',
+    shadowLg: '0 16px 40px rgba(139, 92, 246, 0.5)',
+    
+    glassBg: 'rgba(15, 12, 41, 0.4)',
+    glassBorder: 'rgba(167, 139, 250, 0.2)',
+    glassBlur: '12px',
+    glassSaturate: '110%',
+    
+    gradientStart: '#8b5cf6',
+    gradientEnd: '#fde047',
+  },
+  
+  'abyss-dark': {
+    primary: '#ef4444',
+    primaryHover: '#dc2626',
+    primaryActive: '#b91c1c',
+    primaryLight: 'rgba(239, 68, 68, 0.15)',
+    
+    bgMain: '#000000',
+    bgCard: 'rgba(20, 20, 20, 0.7)',
+    bgSidebar: 'rgba(10, 10, 10, 0.85)',
+    bgHeader: 'rgba(5, 5, 5, 0.8)',
+    bgHover: 'rgba(239, 68, 68, 0.1)',
+    bgActive: 'rgba(239, 68, 68, 0.2)',
+    bgInput: 'rgba(30, 30, 30, 0.8)',
+    
+    textPrimary: '#f3f4f6',
+    textSecondary: '#9ca3af',
+    textTertiary: '#ef4444',
+    textInverse: '#000000',
+    
+    border: 'rgba(239, 68, 68, 0.3)',
+    borderLight: 'rgba(50, 50, 50, 0.5)',
+    borderFocus: '#ef4444',
+    
+    success: '#10b981',
+    warning: '#f59e0b',
+    error: '#ef4444',
+    info: '#3b82f6',
+    
+    shadowSm: '0 2px 8px rgba(0, 0, 0, 0.5)',
+    shadowMd: '0 8px 24px rgba(0, 0, 0, 0.7)',
+    shadowLg: '0 16px 40px rgba(239, 68, 68, 0.2)',
+    
+    glassBg: 'rgba(10, 10, 10, 0.6)',
+    glassBorder: 'rgba(239, 68, 68, 0.15)',
+    glassBlur: '10px',
+    glassSaturate: '90%',
+    
+    gradientStart: '#ef4444',
+    gradientEnd: '#000000',
   },
 }
 
@@ -245,20 +255,17 @@ interface ThemeContextType {
   scheme: ColorScheme
   isDark: boolean
   setMode: (mode: ThemeMode) => void
-  toggleDark: () => void
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
-const THEME_STORAGE_KEY = 'nikki-gallery-theme'
+const THEME_STORAGE_KEY = 'nikki-gallery-epic-theme'
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem(THEME_STORAGE_KEY)
     if (saved && saved in colorSchemes) return saved as ThemeMode
-    // 检测系统暗色模式偏好
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark'
-    return 'sakura-pink' // 默认樱花粉，更有暖暖特色
+    return 'nikki-fantasy'
   })
 
   const setMode = useCallback((newMode: ThemeMode) => {
@@ -266,21 +273,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(THEME_STORAGE_KEY, newMode)
   }, [])
 
-  const toggleDark = useCallback(() => {
-    setMode(mode === 'dark' ? 'sakura-pink' : 'dark')
-  }, [mode, setMode])
-
-  const isDark = mode === 'dark'
+  const isDark = ['cyber-neon', 'starry-night', 'abyss-dark'].includes(mode)
   const scheme = colorSchemes[mode]
 
-  // 应用 CSS 变量到 document
   useEffect(() => {
     const root = document.documentElement
     Object.entries(scheme).forEach(([key, value]) => {
       const cssVar = `--theme-${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`
       root.style.setProperty(cssVar, value)
     })
-    // 设置 body 类名用于 Tailwind dark: 前缀
+    
     if (isDark) {
       document.documentElement.classList.add('dark')
     } else {
@@ -289,7 +291,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [scheme, isDark])
 
   return (
-    <ThemeContext.Provider value={{ mode, scheme, isDark, setMode, toggleDark }}>
+    <ThemeContext.Provider value={{ mode, scheme, isDark, setMode }}>
       {children}
     </ThemeContext.Provider>
   )

@@ -8,7 +8,7 @@ import logger from '../utils/logger'
 export interface AppConfig {
   // === 游戏路径设置 ===
   gamePath: string                    // 游戏安装根目录
-  uid: string                         // 用户UID (用于解密图片元数据)
+  uids: string[]                      // 用户UID列表 (用于解密图片元数据)
   screenshotFolders: string[]         // 已启用的截图文件夹路径列表
   customAlbumsPath: string            // 自定义相册存储目录
 
@@ -44,7 +44,7 @@ export interface AppConfig {
 const DEFAULT_CONFIG: AppConfig = {
   // 游戏路径
   gamePath: '',
-  uid: '',
+  uids: [],
   screenshotFolders: [],
   customAlbumsPath: '',
 

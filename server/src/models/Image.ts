@@ -28,6 +28,39 @@ export interface Image {
   updatedAt: string
 }
 
+// 深度解析的拓展元数据
+export interface ExtendedMetadata {
+  // 暖暖状态
+  giantState?: boolean
+  hiddenState?: boolean
+  clothes?: any[]       // 穿搭详情
+  diyCount?: number     // DIY染色数量
+  transform?: any       // 位置与缩放 (Loc3, Rot3, Scale3)
+  cameraActorTransform?: any // 相机Actor位置与角度
+  
+  // 玩法与交互
+  poseId?: number
+  lightId?: string
+  lightStrength?: number
+  bloomThreshold?: number
+  vibrance?: number
+  interactions?: any[]  // 交互物件
+  
+  puzzleGameTag?: number
+  riskPhotos?: any[]
+  interactivePhotos?: any[]
+  
+  magicballColorIds?: number[]
+  daMiaoInfo?: any
+  weaponSnapShot?: any
+  carrierInfo?: any
+  mountInfo?: any
+  
+  // 杂项
+  photoWallIds?: number[]
+  rawCameraParams?: string // 原始的二次加密参数
+}
+
 // 相机参数接口
 export interface CameraParams {
   // 基础参数
@@ -59,10 +92,13 @@ export interface CameraParams {
   filterId?: string
   filterStrength?: number
   
-  // 其他
+  // 游戏特定参数
   portraitMode?: boolean
-  weatherType?: number
+  weatherType?: string
   gameTime?: string
+  
+  // 深度解析的拓展元数据
+  extendedMetadata?: ExtendedMetadata
 }
 
 export interface CreateImageDTO {
@@ -88,6 +124,8 @@ export interface ImageFilter {
   page?: number
   page_size?: number
   deleted?: boolean // true=只返回已删除, false=只返回未删除, undefined=返回未删除
+  has_coords?: boolean
+  clothes_id?: number
 }
 
 export class ImageModel {
@@ -104,7 +142,9 @@ export class ImageModel {
       sort_order = 'desc',
       page = 1,
       page_size = 50,
-      deleted = false
+      deleted = false,
+      has_coords,
+      clothes_id
     } = filter
 
     let whereClause = 'WHERE 1=1'
@@ -135,6 +175,18 @@ export class ImageModel {
     if (search) {
       whereClause += ' AND (i.filename LIKE ? OR i.description LIKE ?)'
       params.push(`%${search}%`, `%${search}%`)
+    }
+
+    if (has_coords === true) {
+      // 依赖 camera_params JSON 字段中的 positionX
+      whereClause += ' AND i.camera_params IS NOT NULL AND json_extract(i.camera_params, "$.positionX") IS NOT NULL'
+    } else if (has_coords === false) {
+      whereClause += ' AND (i.camera_params IS NULL OR json_extract(i.camera_params, "$.positionX") IS NULL)'
+    }
+
+    if (clothes_id) {
+      whereClause += ' AND EXISTS (SELECT 1 FROM json_each(json_extract(i.camera_params, "$.extendedMetadata.clothes")) WHERE value = ?)'
+      params.push(clothes_id)
     }
 
     // 标签筛选需要JOIN
@@ -465,6 +517,62 @@ export class ImageModel {
     }
     stmt.free()
     return results
+  }
+
+  // 获取衣柜：提取所有图片中出现的服饰ID（去重）
+  static getWardrobe(): number[] {
+    const db = getDatabase()
+    const stmt = db.prepare(`
+      SELECT DISTINCT value as clothes_id
+      FROM images,
+           json_each(json_extract(images.camera_params, '$.extendedMetadata.clothes'))
+      WHERE images.camera_params IS NOT NULL
+        AND images.deleted_at IS NULL
+        AND json_extract(images.camera_params, '$.extendedMetadata.clothes') IS NOT NULL
+      ORDER BY value ASC
+    `)
+
+    const ids: number[] = []
+    while (stmt.step()) {
+      const row = stmt.getAsObject()
+      const val = Number(row.clothes_id)
+      if (!isNaN(val)) ids.push(val)
+    }
+    stmt.free()
+    return ids
+  }
+
+  // 获取衣柜详情：每个服饰ID的封面图片ID和图片数量
+  static getWardrobeWithCovers(): { clothesId: number; coverImageId: string; imageCount: number }[] {
+    const db = getDatabase()
+    const stmt = db.prepare(`
+      SELECT 
+        je.value as clothes_id,
+        MIN(i.id) as cover_image_id,
+        COUNT(DISTINCT i.id) as image_count
+      FROM images i,
+           json_each(json_extract(i.camera_params, '$.extendedMetadata.clothes')) je
+      WHERE i.camera_params IS NOT NULL
+        AND i.deleted_at IS NULL
+        AND json_extract(i.camera_params, '$.extendedMetadata.clothes') IS NOT NULL
+      GROUP BY je.value
+      ORDER BY CAST(je.value AS INTEGER) ASC
+    `)
+
+    const result: { clothesId: number; coverImageId: string; imageCount: number }[] = []
+    while (stmt.step()) {
+      const row = stmt.getAsObject()
+      const clothesId = Number(row.clothes_id)
+      if (!isNaN(clothesId)) {
+        result.push({
+          clothesId,
+          coverImageId: String(row.cover_image_id),
+          imageCount: Number(row.image_count),
+        })
+      }
+    }
+    stmt.free()
+    return result
   }
 
   // 获取统计信息

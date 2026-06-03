@@ -33,6 +33,31 @@ interface ExifData {
   sceneCaptureType?: string
 }
 
+interface ExtendedMetadata {
+  giantState?: boolean
+  hiddenState?: boolean
+  clothes?: any[]
+  diyCount?: number
+  transform?: any
+  cameraActorTransform?: any
+  poseId?: number
+  lightId?: string
+  lightStrength?: number
+  bloomThreshold?: number
+  vibrance?: number
+  interactions?: any[]
+  puzzleGameTag?: number
+  riskPhotos?: any[]
+  interactivePhotos?: any[]
+  magicballColorIds?: number[]
+  daMiaoInfo?: any
+  weaponSnapShot?: any
+  carrierInfo?: any
+  mountInfo?: any
+  photoWallIds?: number[]
+  rawCameraParams?: string
+}
+
 interface CameraParams {
   focalLength?: number
   aperture?: number
@@ -54,8 +79,9 @@ interface CameraParams {
   filterId?: string
   filterStrength?: number
   portraitMode?: boolean
-  weatherType?: number
+  weatherType?: string
   gameTime?: string
+  extendedMetadata?: ExtendedMetadata
 }
 
 interface Metadata {
@@ -65,7 +91,7 @@ interface Metadata {
 }
 
 export default function ImageMetadata({ imageId, onClose }: ImageMetadataProps) {
-  const { scheme } = useTheme()
+  const { scheme, isDark } = useTheme()
   const [metadata, setMetadata] = useState<Metadata | null>(null)
   const [loading, setLoading] = useState(true)
   const [extracting, setExtracting] = useState(false)
@@ -334,12 +360,38 @@ export default function ImageMetadata({ imageId, onClose }: ImageMetadataProps) 
                 </p>
               </div>
             )}
+            
+            {metadata.cameraParams.positionX !== undefined && metadata.cameraParams.positionY !== undefined && (
+              <div className="col-span-3 mt-2 pt-2 border-t" style={{ borderColor: scheme.borderLight }}>
+                <p className="text-xs uppercase tracking-wider mb-1" style={{ color: scheme.textTertiary }}>镜头位置 / Camera Transform</p>
+                <p className="text-sm font-medium font-mono text-gray-500">
+                  Loc: X: {Number(metadata.cameraParams.positionX).toFixed(1)}, Y: {Number(metadata.cameraParams.positionY).toFixed(1)}, Z: {Number(metadata.cameraParams.positionZ || 0).toFixed(1)}
+                </p>
+                {metadata.cameraParams.pitch !== undefined && metadata.cameraParams.yaw !== undefined && (
+                  <p className="text-sm font-medium font-mono text-gray-500 mt-0.5">
+                    Rot: P: {Number(metadata.cameraParams.pitch).toFixed(1)}°, Y: {Number(metadata.cameraParams.yaw).toFixed(1)}°, R: {Number(metadata.cameraParams.roll || 0).toFixed(1)}°
+                  </p>
+                )}
+              </div>
+            )}
+            
+            {metadata.cameraParams.extendedMetadata?.cameraActorTransform && (
+              <div className="col-span-3 mt-2 pt-2 border-t" style={{ borderColor: scheme.borderLight }}>
+                <p className="text-xs uppercase tracking-wider mb-1" style={{ color: scheme.textTertiary }}>相机 Actor 姿态 / Actor Transform</p>
+                <p className="text-sm font-medium font-mono text-gray-500">
+                  Loc: X: {Number(metadata.cameraParams.extendedMetadata.cameraActorTransform.loc.x).toFixed(1)}, Y: {Number(metadata.cameraParams.extendedMetadata.cameraActorTransform.loc.y).toFixed(1)}, Z: {Number(metadata.cameraParams.extendedMetadata.cameraActorTransform.loc.z).toFixed(1)}
+                </p>
+                <p className="text-sm font-medium font-mono text-gray-500 mt-0.5">
+                  Rot: P: {Number(metadata.cameraParams.extendedMetadata.cameraActorTransform.rot.pitch).toFixed(1)}°, Y: {Number(metadata.cameraParams.extendedMetadata.cameraActorTransform.rot.yaw).toFixed(1)}°, R: {Number(metadata.cameraParams.extendedMetadata.cameraActorTransform.rot.roll || 0).toFixed(1)}°
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {/* 环境与角色状态 */}
-      {metadata.gameMetadata?.SocialPhoto?.PhotoInfo && (
+      {metadata.cameraParams?.extendedMetadata && (
         <div
           className="p-4 rounded-xl animate-in fade-in slide-in-from-bottom-4 duration-500 delay-200 fill-mode-both"
           style={{ background: scheme.bgCard }}
@@ -353,42 +405,87 @@ export default function ImageMetadata({ imageId, onClose }: ImageMetadataProps) 
           </h3>
           
           <div className="grid grid-cols-2 gap-y-3 gap-x-4">
-            {metadata.gameMetadata.SocialPhoto.PhotoInfo.lightId && (
+            {metadata.cameraParams.extendedMetadata.lightId && (
               <div>
                 <p className="text-xs uppercase tracking-wider mb-1 flex items-center gap-1" style={{ color: scheme.textTertiary }}>
                   <Sun className="w-3 h-3" /> 光照类型
                 </p>
-                <p className="text-sm font-medium truncate" title={metadata.gameMetadata.SocialPhoto.PhotoInfo.lightId} style={{ color: scheme.textPrimary }}>
-                  {metadata.gameMetadata.SocialPhoto.PhotoInfo.lightId.replace('DirectionLight_', '')}
+                <p className="text-sm font-medium truncate" title={metadata.cameraParams.extendedMetadata.lightId} style={{ color: scheme.textPrimary }}>
+                  {metadata.cameraParams.extendedMetadata.lightId.replace('DirectionLight_', '')}
                 </p>
               </div>
             )}
             
-            {metadata.gameMetadata.SocialPhoto.PhotoInfo.lightStrength !== undefined && (
+            {metadata.cameraParams.extendedMetadata.lightStrength !== undefined && (
               <div>
                 <p className="text-xs uppercase tracking-wider mb-1" style={{ color: scheme.textTertiary }}>光照强度</p>
                 <p className="text-sm font-medium font-mono" style={{ color: scheme.textPrimary }}>
-                  {metadata.gameMetadata.SocialPhoto.PhotoInfo.lightStrength.toFixed(2)}
+                  {metadata.cameraParams.extendedMetadata.lightStrength.toFixed(2)}
                 </p>
               </div>
             )}
 
-            {metadata.gameMetadata.SocialPhoto.PhotoInfo.poseId !== undefined && (
+            {metadata.cameraParams.extendedMetadata.poseId !== undefined && (
               <div>
                 <p className="text-xs uppercase tracking-wider mb-1 flex items-center gap-1" style={{ color: scheme.textTertiary }}>
                   <User className="w-3 h-3" /> 动作姿势
                 </p>
                 <p className="text-sm font-medium font-mono" style={{ color: scheme.textPrimary }}>
-                  ID: {metadata.gameMetadata.SocialPhoto.PhotoInfo.poseId}
+                  ID: {metadata.cameraParams.extendedMetadata.poseId}
                 </p>
               </div>
             )}
             
-            {metadata.gameMetadata.SocialPhoto.PhotoInfo.nikkiHidden !== undefined && (
+            {metadata.cameraParams.extendedMetadata.hiddenState !== undefined && (
               <div>
                 <p className="text-xs uppercase tracking-wider mb-1" style={{ color: scheme.textTertiary }}>人物显示</p>
                 <p className="text-sm font-medium" style={{ color: scheme.textPrimary }}>
-                  {metadata.gameMetadata.SocialPhoto.PhotoInfo.nikkiHidden ? '隐藏' : '显示'}
+                  {metadata.cameraParams.extendedMetadata.hiddenState ? '隐藏' : '显示'}
+                </p>
+              </div>
+            )}
+
+            {metadata.cameraParams.extendedMetadata.giantState !== undefined && (
+              <div>
+                <p className="text-xs uppercase tracking-wider mb-1" style={{ color: scheme.textTertiary }}>体型状态</p>
+                <p className="text-sm font-medium" style={{ color: scheme.textPrimary }}>
+                  {metadata.cameraParams.extendedMetadata.giantState ? '巨大化' : '正常'}
+                </p>
+              </div>
+            )}
+            
+            {metadata.cameraParams.weatherType !== undefined && (
+              <div>
+                <p className="text-xs uppercase tracking-wider mb-1" style={{ color: scheme.textTertiary }}>天气系统</p>
+                <p className="text-sm font-medium" style={{ color: scheme.textPrimary }}>
+                  类型: {metadata.cameraParams.weatherType}
+                </p>
+              </div>
+            )}
+            
+            {metadata.cameraParams.extendedMetadata.interactions && metadata.cameraParams.extendedMetadata.interactions.length > 0 && (
+              <div className="col-span-2">
+                <p className="text-xs uppercase tracking-wider mb-1" style={{ color: scheme.textTertiary }}>交互对象 (Interactions)</p>
+                <p className="text-sm font-medium font-mono" style={{ color: scheme.textPrimary }}>
+                  {metadata.cameraParams.extendedMetadata.interactions.map(i => i.CfgID).join(', ')}
+                </p>
+              </div>
+            )}
+            
+            {metadata.cameraParams.extendedMetadata.daMiaoInfo && (
+              <div className="col-span-2 border-t pt-2 mt-1" style={{ borderColor: scheme.borderLight }}>
+                <p className="text-xs uppercase tracking-wider mb-1" style={{ color: scheme.textTertiary }}>大喵状态 (DaMiao Info)</p>
+                <p className="text-xs font-medium font-mono text-gray-500 break-all">
+                  {JSON.stringify(metadata.cameraParams.extendedMetadata.daMiaoInfo)}
+                </p>
+              </div>
+            )}
+            
+            {(metadata.cameraParams.extendedMetadata.carrierInfo || metadata.cameraParams.extendedMetadata.mountInfo) && (
+              <div className="col-span-2 border-t pt-2 mt-1" style={{ borderColor: scheme.borderLight }}>
+                <p className="text-xs uppercase tracking-wider mb-1" style={{ color: scheme.textTertiary }}>载具/坐骑 (Carrier/Mount Info)</p>
+                <p className="text-xs font-medium font-mono text-gray-500 break-all">
+                  {JSON.stringify(metadata.cameraParams.extendedMetadata.carrierInfo || metadata.cameraParams.extendedMetadata.mountInfo)}
                 </p>
               </div>
             )}
@@ -397,7 +494,7 @@ export default function ImageMetadata({ imageId, onClose }: ImageMetadataProps) 
       )}
 
       {/* 游戏服饰信息 */}
-      {metadata.gameMetadata?.SocialPhoto?.PhotoInfo?.nikkiClothes && (
+      {metadata.cameraParams?.extendedMetadata?.clothes && metadata.cameraParams.extendedMetadata.clothes.length > 0 && (
         <div
           className="p-4 rounded-xl animate-in fade-in slide-in-from-bottom-4 duration-500 delay-300 fill-mode-both"
           style={{ background: scheme.bgCard }}
@@ -411,9 +508,9 @@ export default function ImageMetadata({ imageId, onClose }: ImageMetadataProps) 
           </h3>
           
           <div className="flex flex-wrap gap-2">
-            {metadata.gameMetadata.SocialPhoto.PhotoInfo.nikkiClothes.map((id: number) => (
+            {metadata.cameraParams.extendedMetadata.clothes.map((id: number, idx: number) => (
               <span
-                key={id}
+                key={idx}
                 className="px-2 py-1 rounded-md text-xs font-mono font-medium transition-transform hover:scale-105 cursor-default"
                 style={{
                   background: scheme.primaryLight,
@@ -425,6 +522,41 @@ export default function ImageMetadata({ imageId, onClose }: ImageMetadataProps) 
               </span>
             ))}
           </div>
+
+          {metadata.cameraParams.extendedMetadata.diyCount !== undefined && metadata.cameraParams.extendedMetadata.diyCount > 0 && (
+            <div className="mt-3 pt-3 border-t" style={{ borderColor: scheme.borderLight }}>
+              <p className="text-xs uppercase tracking-wider mb-1" style={{ color: scheme.textTertiary }}>DIY 染色组件数量</p>
+              <p className="text-sm font-medium" style={{ color: scheme.textPrimary }}>
+                已自定义 {metadata.cameraParams.extendedMetadata.diyCount} 个部位颜色
+              </p>
+            </div>
+          )}
+
+          {metadata.cameraParams.extendedMetadata.magicballColorIds && metadata.cameraParams.extendedMetadata.magicballColorIds.length > 0 && (
+            <div className="mt-3 pt-3 border-t" style={{ borderColor: scheme.borderLight }}>
+              <p className="text-xs uppercase tracking-wider mb-1" style={{ color: scheme.textTertiary }}>奇想星颜色 (Magic Ball)</p>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {metadata.cameraParams.extendedMetadata.magicballColorIds.map((id: number, idx: number) => (
+                  <span 
+                    key={idx}
+                    className="px-2 py-1 text-xs font-mono rounded-md"
+                    style={{ background: scheme.bgHover, color: scheme.textSecondary }}
+                  >
+                    {id}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {metadata.cameraParams.extendedMetadata.weaponSnapShot && (
+            <div className="mt-3 pt-3 border-t" style={{ borderColor: scheme.borderLight }}>
+              <p className="text-xs uppercase tracking-wider mb-1" style={{ color: scheme.textTertiary }}>武器状态 (Weapon SnapShot)</p>
+              <p className="text-xs font-medium font-mono text-gray-500 break-all">
+                {JSON.stringify(metadata.cameraParams.extendedMetadata.weaponSnapShot)}
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -550,6 +682,26 @@ export default function ImageMetadata({ imageId, onClose }: ImageMetadataProps) 
         imageIds={[imageId]}
         onDecryptComplete={() => loadMetadata()}
       />
+
+      {/* 原始 JSON 数据 */}
+      {metadata.gameMetadata && (
+        <div className="p-4 rounded-xl animate-in fade-in slide-in-from-bottom-4 duration-500 delay-500 fill-mode-both" style={{ background: scheme.bgCard }}>
+          <details className="group">
+            <summary className="text-sm font-medium cursor-pointer flex items-center gap-2 select-none outline-none" style={{ color: scheme.textPrimary }}>
+              <Settings className="w-4 h-4 text-purple-500" />
+              查看原始元数据 (Raw Data)
+            </summary>
+            <div className="mt-3 p-3 rounded-lg overflow-x-auto text-xs font-mono whitespace-pre-wrap break-all" style={{ background: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.05)', color: scheme.textSecondary, maxHeight: '400px', overflowY: 'auto' }}>
+              {typeof metadata.gameMetadata === 'string' ? 
+                (() => {
+                  try { return JSON.stringify(JSON.parse(metadata.gameMetadata), null, 2); }
+                  catch { return metadata.gameMetadata; }
+                })() : 
+                JSON.stringify(metadata.gameMetadata, null, 2)}
+            </div>
+          </details>
+        </div>
+      )}
 
       {/* 刷新按钮 */}
       <div className="flex justify-end">

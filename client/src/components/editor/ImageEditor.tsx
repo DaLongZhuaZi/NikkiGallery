@@ -10,6 +10,8 @@ import toast from 'react-hot-toast'
 interface ImageEditorProps {
   /** 图片URL */
   imageUrl: string
+  /** 图片ID */
+  imageId?: string
   /** 关闭回调 */
   onClose: () => void
   /** 保存回调 */
@@ -58,6 +60,9 @@ interface EditParams {
   cropWidth: number       // 0 ~ 1
   cropHeight: number      // 0 ~ 1
   rotation: number        // -180 ~ 180
+
+  // 边框水印
+  frame: boolean          // 是否添加底部游戏相框
 }
 
 /** 默认参数 */
@@ -87,6 +92,7 @@ const DEFAULT_PARAMS: EditParams = {
   cropWidth: 1,
   cropHeight: 1,
   rotation: 0,
+  frame: false,
 }
 
 /** 裁剪比例预设 */
@@ -101,7 +107,9 @@ const CROP_RATIOS = [
   { name: '2:3', value: 2 / 3 },
 ]
 
-export default function ImageEditor({ imageUrl, onClose, onSave }: ImageEditorProps) {
+import { getImageMetadata } from '@/api/image'
+
+export default function ImageEditor({ imageUrl, imageId, onClose, onSave }: ImageEditorProps) {
   const { scheme } = useTheme()
 
   // 画布引用
@@ -114,11 +122,14 @@ export default function ImageEditor({ imageUrl, onClose, onSave }: ImageEditorPr
   const [historyIndex, setHistoryIndex] = useState(0)
 
   // UI 状态
-  const [activeTab, setActiveTab] = useState<'adjust' | 'crop'>('adjust')
+  const [activeTab, setActiveTab] = useState<'adjust' | 'crop' | 'frame'>('adjust')
   const [selectedCropRatio, setSelectedCropRatio] = useState<number | null>(null)
   const [isCropping, setIsCropping] = useState(false)
+  
+  // 元数据状态
+  const [metadata, setMetadata] = useState<any>(null)
 
-  // 加载图片
+  // 加载图片与元数据
   useEffect(() => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
@@ -127,7 +138,13 @@ export default function ImageEditor({ imageUrl, onClose, onSave }: ImageEditorPr
       renderImage()
     }
     img.src = imageUrl
-  }, [imageUrl])
+    
+    if (imageId) {
+      getImageMetadata(imageId).then(res => {
+        if (res) setMetadata(res)
+      }).catch(console.error)
+    }
+  }, [imageUrl, imageId])
 
   // 参数变化时重新渲染
   useEffect(() => {
@@ -143,9 +160,18 @@ export default function ImageEditor({ imageUrl, onClose, onSave }: ImageEditorPr
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
+    // 应用裁剪
+    const sx = params.cropX * image.width
+    const sy = params.cropY * image.height
+    const sw = params.cropWidth * image.width
+    const sh = params.cropHeight * image.height
+    
+    // 边框水印高度
+    const bannerHeight = params.frame ? Math.max(120, sh * 0.1) : 0
+
     // 设置画布尺寸
-    canvas.width = image.width
-    canvas.height = image.height
+    canvas.width = sw
+    canvas.height = sh + bannerHeight
 
     // 清空画布
     ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -153,18 +179,12 @@ export default function ImageEditor({ imageUrl, onClose, onSave }: ImageEditorPr
     // 保存状态
     ctx.save()
 
-    // 应用旋转
+    // 应用旋转 (围绕图片中心旋转)
     if (params.rotation !== 0) {
-      ctx.translate(canvas.width / 2, canvas.height / 2)
+      ctx.translate(canvas.width / 2, sh / 2)
       ctx.rotate((params.rotation * Math.PI) / 180)
-      ctx.translate(-canvas.width / 2, -canvas.height / 2)
+      ctx.translate(-canvas.width / 2, -sh / 2)
     }
-
-    // 应用裁剪
-    const sx = params.cropX * image.width
-    const sy = params.cropY * image.height
-    const sw = params.cropWidth * image.width
-    const sh = params.cropHeight * image.height
 
     // 应用 CSS 滤镜
     const filters: string[] = []
@@ -194,14 +214,14 @@ export default function ImageEditor({ imageUrl, onClose, onSave }: ImageEditorPr
     // 应用滤镜
     ctx.filter = filters.join(' ')
 
-    // 绘制裁剪区域
+    // 绘制图片 (裁剪区域绘制到 0,0)
     ctx.drawImage(
       image,
       sx, sy, sw, sh,
-      sx, sy, sw, sh
+      0, 0, sw, sh
     )
 
-    // 恢复状态
+    // 恢复状态 (清除滤镜等)
     ctx.restore()
 
     // 应用后处理效果（色温、色调、高光、阴影等需要像素级操作）
@@ -216,9 +236,52 @@ export default function ImageEditor({ imageUrl, onClose, onSave }: ImageEditorPr
       params.yellowBlue !== 0 || params.fade !== 0
     )
     if (needsPixelProcessing) {
-      applyPixelAdjustments(ctx, sx, sy, sw, sh)
+      applyPixelAdjustments(ctx, 0, 0, sw, sh)
     }
-  }, [params])
+
+    // 绘制水印边框
+    if (params.frame && bannerHeight > 0) {
+      // 底部白底
+      ctx.fillStyle = '#FFFFFF'
+      ctx.fillRect(0, sh, sw, bannerHeight)
+
+      // 绘制相机参数等文本
+      ctx.fillStyle = '#000000'
+      ctx.textBaseline = 'middle'
+      
+      const paddingX = sw * 0.05
+      
+      // 左侧文字：游戏信息 / 时间
+      ctx.textAlign = 'left'
+      ctx.font = `bold ${bannerHeight * 0.25}px sans-serif`
+      ctx.fillText('INFINITY NIKKI', paddingX, sh + bannerHeight * 0.35)
+      
+      ctx.font = `${bannerHeight * 0.15}px sans-serif`
+      ctx.fillStyle = '#666666'
+      const dateText = metadata?.gameMetadata?.timestamp || new Date().toLocaleString()
+      ctx.fillText(dateText, paddingX, sh + bannerHeight * 0.65)
+
+      // 右侧文字：拍摄参数
+      if (metadata?.cameraParams) {
+        ctx.textAlign = 'right'
+        ctx.fillStyle = '#000000'
+        ctx.font = `bold ${bannerHeight * 0.25}px sans-serif`
+        
+        const paramsText = []
+        if (metadata.cameraParams.focalLength) paramsText.push(`${metadata.cameraParams.focalLength}mm`)
+        if (metadata.cameraParams.aperture) paramsText.push(`f/${metadata.cameraParams.aperture}`)
+        
+        ctx.fillText(paramsText.join('  '), sw - paddingX, sh + bannerHeight * 0.35)
+        
+        ctx.font = `${bannerHeight * 0.15}px sans-serif`
+        ctx.fillStyle = '#666666'
+        const loc = []
+        if (metadata.cameraParams.positionX) loc.push(`X:${metadata.cameraParams.positionX.toFixed(1)}`)
+        if (metadata.cameraParams.positionY) loc.push(`Y:${metadata.cameraParams.positionY.toFixed(1)}`)
+        ctx.fillText(loc.join(' '), sw - paddingX, sh + bannerHeight * 0.65)
+      }
+    }
+  }, [params, metadata])
 
   // ==================== 颜色空间转换辅助函数 ====================
 
@@ -700,6 +763,17 @@ export default function ImageEditor({ imageUrl, onClose, onSave }: ImageEditorPr
             <Crop className="w-4 h-4" />
             裁剪
           </button>
+          <button
+            onClick={() => setActiveTab('frame')}
+            className="flex-1 py-3 text-sm font-medium flex items-center justify-center gap-1.5 transition-colors"
+            style={{
+              color: activeTab === 'frame' ? scheme.primary : scheme.textSecondary,
+              borderBottom: activeTab === 'frame' ? `2px solid ${scheme.primary}` : 'none',
+            }}
+          >
+            <Layers className="w-4 h-4" />
+            边框水印
+          </button>
         </div>
 
         {/* 编辑内容 */}
@@ -796,7 +870,7 @@ export default function ImageEditor({ imageUrl, onClose, onSave }: ImageEditorPr
               </div>
               {renderSlider('褪色', 'fade', <Eye className="w-4 h-4" />, 0, 100)}
             </div>
-          ) : (
+          ) : activeTab === 'crop' ? (
             /* 裁剪面板 */
             <div>
               <h4 className="text-sm font-medium mb-3" style={{ color: scheme.textPrimary }}>
@@ -822,6 +896,43 @@ export default function ImageEditor({ imageUrl, onClose, onSave }: ImageEditorPr
                 旋转
               </h4>
               {renderSlider('旋转角度', 'rotation', <RotateCcw className="w-4 h-4" />, -180, 180)}
+            </div>
+          ) : (
+            /* 边框水印面板 */
+            <div>
+              <h4 className="text-sm font-medium mb-3" style={{ color: scheme.textPrimary }}>
+                游戏定制边框
+              </h4>
+              <p className="text-xs mb-6" style={{ color: scheme.textSecondary }}>
+                开启后，将在图片底部添加带有「INFINITY NIKKI」标识、游戏时间和拍摄参数（如有）的精美白色水印横幅。
+              </p>
+              
+              <label className="flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors" style={{ background: scheme.bgHover }}>
+                <span className="text-sm font-medium" style={{ color: scheme.textPrimary }}>底部相框水印</span>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={params.frame}
+                    onChange={(e) => updateParam('frame', e.target.checked as any)}
+                  />
+                  <div className={`block w-10 h-6 rounded-full transition-colors ${params.frame ? 'bg-blue-500' : 'bg-gray-400'}`}></div>
+                  <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${params.frame ? 'translate-x-4' : ''}`}></div>
+                </div>
+              </label>
+
+              {metadata?.cameraParams ? (
+                <div className="mt-6 p-3 rounded-lg text-xs" style={{ background: 'rgba(0,0,0,0.05)', color: scheme.textSecondary }}>
+                  检测到拍摄参数：
+                  <br />焦距: {metadata.cameraParams.focalLength}mm
+                  <br />光圈: f/{metadata.cameraParams.aperture}
+                  <br />坐标: X:{metadata.cameraParams.positionX?.toFixed(1)} Y:{metadata.cameraParams.positionY?.toFixed(1)}
+                </div>
+              ) : (
+                <div className="mt-6 p-3 rounded-lg text-xs" style={{ background: 'rgba(0,0,0,0.05)', color: scheme.textSecondary }}>
+                  未检测到游戏拍摄参数，将仅显示标识与时间。
+                </div>
+              )}
             </div>
           )}
         </div>

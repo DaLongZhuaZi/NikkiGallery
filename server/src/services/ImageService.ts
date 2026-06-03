@@ -74,39 +74,66 @@ export class ImageService {
     return ImageModel.batchUpdateFavorite(ids, favorite)
   }
 
-  // 生成缩略图
-  static async generateThumbnail(imageId: string): Promise<string | null> {
+  // 缩略图尺寸配置
+  private static readonly THUMB_SIZES: Record<string, { width: number; height: number; quality: number; suffix: string }> = {
+    small:  { width: 150, height: 150, quality: 70, suffix: '_small' },
+    medium: { width: 300, height: 300, quality: 80, suffix: '' },       // 默认尺寸，向后兼容
+    large:  { width: 600, height: 600, quality: 85, suffix: '_large' },
+  }
+
+  // 获取指定尺寸的缩略图路径
+  static getThumbnailPath(imageId: string, size: 'small' | 'medium' | 'large' = 'medium'): string | null {
+    const sizeConfig = ImageService.THUMB_SIZES[size] || ImageService.THUMB_SIZES.medium
+    const suffix = sizeConfig.suffix
+    const filename = `${imageId}_thumb${suffix}.jpg`
+    const filePath = path.join(config.storage.thumbnailsPath, filename)
+    if (fs.existsSync(filePath)) return filePath
+
+    // 请求的尺寸不存在，fallback 到 medium
+    if (size !== 'medium') {
+      const fallback = path.join(config.storage.thumbnailsPath, `${imageId}_thumb.jpg`)
+      if (fs.existsSync(fallback)) return fallback
+    }
+    return null
+  }
+
+  // 生成缩略图（支持多尺寸）
+  static async generateThumbnail(imageId: string, size: 'small' | 'medium' | 'large' = 'medium'): Promise<string | null> {
     const image = ImageModel.findById(imageId)
     if (!image) {
       throw new Error('Image not found')
     }
 
-    // 如果已有缩略图
-    if (image.thumbnailPath && fs.existsSync(image.thumbnailPath)) {
-      return image.thumbnailPath
-    }
+    const sizeConfig = ImageService.THUMB_SIZES[size] || ImageService.THUMB_SIZES.medium
+
+    // 检查是否已存在
+    const existingPath = ImageService.getThumbnailPath(imageId, size)
+    if (existingPath) return existingPath
 
     // 确保缩略图目录存在
     if (!fs.existsSync(config.storage.thumbnailsPath)) {
       fs.mkdirSync(config.storage.thumbnailsPath, { recursive: true })
     }
 
-    const thumbnailFilename = `${imageId}_thumb.jpg`
+    const suffix = sizeConfig.suffix
+    const thumbnailFilename = `${imageId}_thumb${suffix}.jpg`
     const thumbnailPath = path.join(config.storage.thumbnailsPath, thumbnailFilename)
 
     try {
       await sharp(image.path)
-        .resize(config.thumbnail.width, config.thumbnail.height, {
+        .resize(sizeConfig.width, sizeConfig.height, {
           fit: 'cover',
           position: 'center',
         })
-        .jpeg({ quality: config.thumbnail.quality })
+        .jpeg({ quality: sizeConfig.quality })
         .toFile(thumbnailPath)
 
-      // 更新数据库
-      ImageModel.update(imageId, { thumbnailPath: thumbnailPath })
+      // 更新数据库（仅 medium 尺寸更新主字段，向后兼容）
+      if (size === 'medium') {
+        ImageModel.update(imageId, { thumbnailPath: thumbnailPath })
+      }
 
-      logger.info(`Thumbnail generated for image ${imageId}`)
+      logger.info(`Thumbnail (${size}) generated for image ${imageId}`)
       return thumbnailPath
     } catch (error) {
       logger.error(`Failed to generate thumbnail for image ${imageId}:`, error)

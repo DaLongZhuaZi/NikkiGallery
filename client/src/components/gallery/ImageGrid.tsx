@@ -1,14 +1,49 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Image as ImageIcon, Heart, Eye, Trash2, Move, Download } from 'lucide-react'
 import { Image } from '@/types/image'
 import { useImageStore } from '@/stores/useImageStore'
 import { useTheme } from '@/contexts/ThemeContext'
 import ImagePreview from './ImagePreview'
 import clsx from 'clsx'
+import toast from 'react-hot-toast'
+import { deleteImage, downloadImage, batchOperation } from '@/api/image'
+import AlbumSelectorModal from './AlbumSelectorModal'
 
 interface ImageGridProps {
   images: Image[]
   viewMode: 'grid' | 'masonry'
+}
+
+/**
+ * 根据视口宽度返回瀑布流列数
+ * 网格模式: 2/3/4/5 列
+ * 瀑布流模式: 1/2/3 列 —— 更少列数，图片更大
+ */
+function getMasonryColumns(width: number): number {
+  if (width >= 1024) return 3   // lg
+  if (width >= 640) return 2    // sm
+  return 1                       // 移动端
+}
+
+/**
+ * 最短列算法：将图片按序分配到当前高度最小的列
+ * 确保各列高度尽量均衡，同时保持图片顺序
+ */
+function distributeToColumns(images: Image[], colCount: number): Image[][] {
+  const columns: Image[][] = Array.from({ length: colCount }, () => [])
+  const heights: number[] = new Array(colCount).fill(0)
+
+  for (const image of images) {
+    // 找到当前最短的列
+    const minIdx = heights.indexOf(Math.min(...heights))
+    columns[minIdx].push(image)
+    // 用图片宽高比的倒数作为高度权重 (宽/高)，横向图占高度少，竖向图占高度多
+    const w = image.width || 1
+    const h = image.height || 1
+    heights[minIdx] += w / h
+  }
+
+  return columns
 }
 
 export default function ImageGrid({ images, viewMode }: ImageGridProps) {
@@ -16,6 +51,25 @@ export default function ImageGrid({ images, viewMode }: ImageGridProps) {
   const { scheme } = useTheme()
   const [previewIndex, setPreviewIndex] = useState<number | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; imageId: string } | null>(null)
+  const [showMoveModal, setShowMoveModal] = useState<string | null>(null)
+
+  // 响应式瀑布流列数
+  const [masonryCols, setMasonryCols] = useState(() => getMasonryColumns(window.innerWidth))
+
+  const handleResize = useCallback(() => {
+    setMasonryCols(getMasonryColumns(window.innerWidth))
+  }, [])
+
+  useEffect(() => {
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [handleResize])
+
+  // 计算瀑布流列分配
+  const masonryColumns = useMemo(() => {
+    if (viewMode !== 'masonry') return []
+    return distributeToColumns(images, masonryCols)
+  }, [images, masonryCols, viewMode])
 
   const openPreview = (image: Image) => {
     const idx = images.findIndex(i => i.id === image.id)
@@ -68,130 +122,165 @@ export default function ImageGrid({ images, viewMode }: ImageGridProps) {
     )
   }
 
-  return (
-    <>
+  /** 渲染单张图片卡片 */
+  const renderImageCard = (image: Image, index: number, isMasonry: boolean) => {
+    // 计算真实宽高比
+    const w = image.width || 1
+    const h = image.height || 1
+    const aspectRatio = w / h
+
+    return (
       <div
+        key={image.id}
         className={clsx(
-          viewMode === 'grid'
-            ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4'
-            : 'columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-3 md:gap-4 space-y-3 md:space-y-4'
+          'group relative rounded-xl overflow-hidden cursor-pointer transition-all duration-300',
+          'hover:shadow-lg hover:-translate-y-0.5',
         )}
-        onClick={handleCloseContextMenu}
+        style={{
+          backgroundColor: scheme.bgCard,
+          boxShadow: scheme.shadowSm,
+          animationDelay: `${Math.min(index * 30, 300)}ms`,
+          contentVisibility: 'auto',
+          containIntrinsicSize: isMasonry
+            ? `0 ${Math.round(300 / aspectRatio)}px`
+            : '0 250px',
+        }}
+        onClick={() => selectImage(image.id)}
+        onDoubleClick={() => openPreview(image)}
+        onContextMenu={(e) => handleContextMenu(e, image.id)}
       >
-        {images.map((image, index) => (
+        {/* 选中边框 */}
+        {selectedImages.includes(image.id) && (
           <div
-            key={image.id}
+            className="absolute inset-0 rounded-xl z-10 pointer-events-none"
+            style={{
+              border: `3px solid ${scheme.primary}`,
+              boxShadow: `0 0 0 3px ${scheme.primaryLight}`,
+            }}
+          />
+        )}
+
+        {/* 图片 */}
+        <div className="relative" style={{ background: scheme.bgHover }}>
+          <div
+            className="absolute inset-0 animate-pulse rounded-none"
+            style={{ background: `linear-gradient(110deg, ${scheme.bgHover} 30%, ${scheme.bgCard} 50%, ${scheme.bgHover} 70%)`, backgroundSize: '200% 100%' }}
+          />
+          <img
+            src={`/api/images/${image.id}/thumbnail?size=${isMasonry ? 'medium' : 'small'}`}
+            alt={image.filename}
             className={clsx(
-              'group relative rounded-xl overflow-hidden cursor-pointer transition-all duration-300',
-              'hover:shadow-lg hover:-translate-y-0.5',
-              viewMode === 'masonry' && 'break-inside-avoid'
+              'relative w-full transition-transform duration-500 group-hover:scale-110',
+              viewMode === 'grid' ? 'aspect-square object-cover' : 'h-auto'
+            )}
+            style={isMasonry ? { aspectRatio: `${w} / ${h}`, objectFit: 'cover' } : undefined}
+            loading="lazy"
+          />
+        </div>
+
+        {/* 悬浮渐变遮罩 */}
+        <div
+          className="absolute inset-0 transition-opacity duration-300 opacity-0 group-hover:opacity-100"
+          style={{
+            background: `linear-gradient(to top, ${scheme.bgMain}99, transparent 50%)`,
+          }}
+        />
+
+        {/* 悬浮操作按钮 (移动端半透明常驻) */}
+        <div className="absolute top-2 right-2 flex gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all duration-300 translate-y-0 md:translate-y-1 md:group-hover:translate-y-0 z-20">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              toggleFavorite(image.id)
+            }}
+            className={clsx(
+              'p-1.5 rounded-full backdrop-blur-sm transition-all duration-200',
+              'hover:scale-110 active:scale-95'
             )}
             style={{
-              backgroundColor: scheme.bgCard,
-              boxShadow: scheme.shadowSm,
-              animationDelay: `${Math.min(index * 30, 300)}ms`,
+              backgroundColor: image.favorite ? scheme.primary : scheme.glassBg,
+              color: image.favorite ? '#ffffff' : scheme.textPrimary,
+              border: `1px solid ${image.favorite ? 'transparent' : scheme.borderLight}`,
             }}
-            onClick={() => selectImage(image.id)}
-            onDoubleClick={() => openPreview(image)}
-            onContextMenu={(e) => handleContextMenu(e, image.id)}
           >
-            {/* 选中边框 */}
-            {selectedImages.includes(image.id) && (
-              <div
-                className="absolute inset-0 rounded-xl z-10 pointer-events-none"
-                style={{
-                  border: `3px solid ${scheme.primary}`,
-                  boxShadow: `0 0 0 3px ${scheme.primaryLight}`,
-                }}
-              />
-            )}
+            <Heart className="w-4 h-4" fill={image.favorite ? 'currentColor' : 'none'} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              openPreview(image)
+            }}
+            className="p-1.5 md:p-2 rounded-full backdrop-blur-sm transition-all duration-200 hover:scale-110 active:scale-95"
+            style={{
+              backgroundColor: scheme.glassBg,
+              color: scheme.textPrimary,
+              border: `1px solid ${scheme.borderLight}`,
+            }}
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+        </div>
 
-            {/* 图片 */}
-            <img
-              src={`/api/images/${image.id}/thumbnail?size=small`}
-              alt={image.filename}
-              className={clsx(
-                'w-full object-cover transition-transform duration-500 group-hover:scale-110',
-                viewMode === 'grid' ? 'aspect-square' : 'h-auto'
-              )}
-              loading="lazy"
-            />
-
-            {/* 悬浮渐变遮罩 */}
+        {/* 选中状态勾选 */}
+        {selectedImages.includes(image.id) && (
+          <div className="absolute top-2 left-2 z-10">
             <div
-              className="absolute inset-0 transition-opacity duration-300 opacity-0 group-hover:opacity-100"
-              style={{
-                background: `linear-gradient(to top, ${scheme.bgMain}99, transparent 50%)`,
-              }}
-            />
-
-            {/* 悬浮操作按钮 (移动端半透明常驻) */}
-            <div className="absolute top-2 right-2 flex gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all duration-300 translate-y-0 md:translate-y-1 md:group-hover:translate-y-0 z-20">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  toggleFavorite(image.id)
-                }}
-                className={clsx(
-                  'p-1.5 rounded-full backdrop-blur-sm transition-all duration-200',
-                  'hover:scale-110 active:scale-95'
-                )}
-                style={{
-                  backgroundColor: image.favorite ? scheme.primary : scheme.glassBg,
-                  color: image.favorite ? '#ffffff' : scheme.textPrimary,
-                  border: `1px solid ${image.favorite ? 'transparent' : scheme.borderLight}`,
-                }}
-              >
-                <Heart className="w-4 h-4" fill={image.favorite ? 'currentColor' : 'none'} />
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  openPreview(image)
-                }}
-                className="p-1.5 md:p-2 rounded-full backdrop-blur-sm transition-all duration-200 hover:scale-110 active:scale-95"
-                style={{
-                  backgroundColor: scheme.glassBg,
-                  color: scheme.textPrimary,
-                  border: `1px solid ${scheme.borderLight}`,
-                }}
-              >
-                <Eye className="w-4 h-4" />
-              </button>
+              className="w-5 h-5 rounded-full flex items-center justify-center shadow-md"
+              style={{ backgroundColor: scheme.primary }}
+            >
+              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
             </div>
-
-            {/* 选中状态勾选 */}
-            {selectedImages.includes(image.id) && (
-              <div className="absolute top-2 left-2 z-10">
-                <div
-                  className="w-5 h-5 rounded-full flex items-center justify-center shadow-md"
-                  style={{ backgroundColor: scheme.primary }}
-                >
-                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-              </div>
-            )}
-
-            {/* AI处理标签 */}
-            {image.aiProcessed && (
-              <div className="absolute bottom-2 left-2">
-                <span
-                  className="px-2 py-0.5 rounded-full text-xs font-medium backdrop-blur-sm"
-                  style={{
-                    background: `linear-gradient(135deg, ${scheme.gradientStart}, ${scheme.gradientEnd})`,
-                    color: '#ffffff',
-                    boxShadow: `0 2px 8px ${scheme.gradientStart}66`,
-                  }}
-                >
-                  AI
-                </span>
-              </div>
-            )}
           </div>
-        ))}
+        )}
+
+        {/* AI处理标签 */}
+        {image.aiProcessed && (
+          <div className="absolute bottom-2 left-2">
+            <span
+              className="px-2 py-0.5 rounded-full text-xs font-medium backdrop-blur-sm"
+              style={{
+                background: `linear-gradient(135deg, ${scheme.gradientStart}, ${scheme.gradientEnd})`,
+                color: '#ffffff',
+                boxShadow: `0 2px 8px ${scheme.gradientStart}66`,
+              }}
+            >
+              AI
+            </span>
+          </div>
+        )}
       </div>
+    )
+  }
+
+  return (
+    <>
+      {/* 网格模式：统一正方形缩略图 */}
+      {viewMode === 'grid' ? (
+        <div
+          className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4"
+          onClick={handleCloseContextMenu}
+        >
+          {images.map((image, index) => renderImageCard(image, index, false))}
+        </div>
+      ) : (
+        /* 瀑布流模式：JS 最短列算法，保持图片原始宽高比 */
+        <div
+          className="flex gap-3 md:gap-4"
+          onClick={handleCloseContextMenu}
+        >
+          {masonryColumns.map((col, colIdx) => (
+            <div key={colIdx} className="flex-1 flex flex-col gap-3 md:gap-4 min-w-0">
+              {col.map((image, rowIdx) => {
+                // 全局序号用于动画延迟
+                const globalIdx = images.findIndex(i => i.id === image.id)
+                return renderImageCard(image, globalIdx >= 0 ? globalIdx : rowIdx, true)
+              })}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* 加载更多指示器 */}
       {images.length < total && (
@@ -248,9 +337,14 @@ export default function ImageGrid({ images, viewMode }: ImageGridProps) {
               预览
             </button>
             <button
-              onClick={() => {
-                // TODO: 下载图片
+              onClick={async () => {
                 handleCloseContextMenu()
+                try {
+                  await downloadImage(contextMenu.imageId)
+                  toast.success('开始下载')
+                } catch {
+                  toast.error('下载失败')
+                }
               }}
               className="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors"
               style={{ color: scheme.textPrimary }}
@@ -262,7 +356,7 @@ export default function ImageGrid({ images, viewMode }: ImageGridProps) {
             </button>
             <button
               onClick={() => {
-                // TODO: 移动图片
+                setShowMoveModal(contextMenu.imageId)
                 handleCloseContextMenu()
               }}
               className="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors"
@@ -275,9 +369,15 @@ export default function ImageGrid({ images, viewMode }: ImageGridProps) {
             </button>
             <hr className="my-1" style={{ borderColor: scheme.borderLight }} />
             <button
-              onClick={() => {
-                // TODO: 删除图片
+              onClick={async () => {
                 handleCloseContextMenu()
+                try {
+                  await deleteImage(contextMenu.imageId)
+                  toast.success('图片已移至回收站')
+                  window.dispatchEvent(new Event('gallery-refresh'))
+                } catch {
+                  toast.error('删除失败')
+                }
               }}
               className="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors"
               style={{ color: scheme.error }}
@@ -289,6 +389,27 @@ export default function ImageGrid({ images, viewMode }: ImageGridProps) {
             </button>
           </div>
         </>
+      )}
+
+      {/* 移动图片对话框 */}
+      {showMoveModal && (
+        <AlbumSelectorModal
+          onClose={() => setShowMoveModal(null)}
+          onSelect={async (albumId) => {
+            try {
+              await batchOperation({
+                action: 'move',
+                imageIds: [showMoveModal],
+                targetAlbumId: albumId
+              })
+              toast.success('移动成功')
+              setShowMoveModal(null)
+              window.dispatchEvent(new Event('gallery-refresh'))
+            } catch {
+              toast.error('移动失败')
+            }
+          }}
+        />
       )}
     </>
   )

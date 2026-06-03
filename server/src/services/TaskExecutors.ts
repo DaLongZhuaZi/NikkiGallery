@@ -41,16 +41,33 @@ export function registerTaskExecutors(): void {
 
   // 3. 提取元数据
   taskService.registerExecutor('extract_metadata', async (task: Task, onProgress: ProgressCallback) => {
-    const { imageIds } = task.metadata
-    if (!imageIds || !Array.isArray(imageIds)) throw new Error('imageIds array is required')
+    const { imageIds, albumIds } = task.metadata
+    
+    let finalImageIds: string[] = []
 
-    task.totalItems = imageIds.length
+    if (albumIds && Array.isArray(albumIds)) {
+      for (const albumId of albumIds) {
+        const res = await ImageService.getImages({ album_id: albumId, page_size: 999999 })
+        finalImageIds.push(...res.images.map(img => img.id))
+      }
+    }
+
+    if (imageIds && Array.isArray(imageIds)) {
+      finalImageIds.push(...imageIds)
+    }
+
+    // 去重
+    finalImageIds = [...new Set(finalImageIds)]
+
+    if (finalImageIds.length === 0) throw new Error('No images provided or albums are empty')
+
+    task.totalItems = finalImageIds.length
     let processed = 0
     let failed = 0
 
     onProgress(0, '开始提取元数据...')
 
-    for (const imageId of imageIds) {
+    for (const imageId of finalImageIds) {
       try {
         await MetadataService.extractAndSaveMetadata(imageId)
         processed++
@@ -60,14 +77,14 @@ export function registerTaskExecutors(): void {
       }
 
       onProgress(
-        Math.round((processed / imageIds.length) * 100),
-        `提取元数据: ${processed}/${imageIds.length}`,
+        Math.round((processed / finalImageIds.length) * 100),
+        `提取元数据: ${processed}/${finalImageIds.length}`,
         processed,
         failed
       )
     }
 
-    return { total: imageIds.length, processed, failed }
+    return { total: finalImageIds.length, processed, failed }
   })
 
   // 4. AI处理

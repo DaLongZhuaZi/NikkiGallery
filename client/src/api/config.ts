@@ -11,7 +11,7 @@ const api = axios.create({
 export interface AppConfig {
   // 游戏路径设置
   gamePath: string
-  uid: string
+  uids: string[]
   screenshotFolders: string[]
   customAlbumsPath: string
 

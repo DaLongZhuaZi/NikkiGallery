@@ -11,9 +11,10 @@ interface ShareStore {
   total: number
   page: number
   pageSize: number
+  lastFetchedAt: number
   
   // Actions
-  fetchShareCodes: () => Promise<void>
+  fetchShareCodes: (force?: boolean) => Promise<void>
   selectShareCode: (id: string) => void
   createShareCode: (data: CreateShareCodeDTO) => Promise<void>
   updateShareCode: (id: string, data: UpdateShareCodeDTO) => Promise<void>
@@ -36,8 +37,10 @@ export const useShareStore = create<ShareStore>((set, get) => ({
   total: 0,
   page: 1,
   pageSize: 20,
+  lastFetchedAt: 0,
 
-  fetchShareCodes: async () => {
+  fetchShareCodes: async (force = false) => {
+    if (!force && Date.now() - get().lastFetchedAt < 30_000) return
     set({ loading: true, error: null })
     try {
       const response = await shareApi.getShareCodes(get().filter)
@@ -46,7 +49,8 @@ export const useShareStore = create<ShareStore>((set, get) => ({
         total: response.total,
         page: response.page,
         pageSize: response.pageSize,
-        loading: false 
+        loading: false,
+        lastFetchedAt: Date.now(),
       })
     } catch (error) {
       set({ 

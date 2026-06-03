@@ -23,7 +23,7 @@ interface ConfigStore {
 const defaultConfig: AppConfig = {
   // 游戏路径
   gamePath: '',
-  uid: '',
+  uids: [],
   screenshotFolders: [],
   customAlbumsPath: '',
 

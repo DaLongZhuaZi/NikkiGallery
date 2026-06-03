@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'
 import { useTheme } from '@/contexts/ThemeContext'
 import Header from '../Header'
 import Sidebar from '../Sidebar'
+import Dock from '../Dock'
 import TaskPanel from '@/components/tasks/TaskPanel'
 
 export default function Layout() {
@@ -26,12 +27,15 @@ export default function Layout() {
         <Header onMenuClick={() => setSidebarOpen(true)} />
 
         <main
-          className="flex-1 overflow-y-auto p-4 lg:p-6"
+          className="flex-1 overflow-y-auto p-4 lg:p-6 pb-20 md:pb-4 lg:pb-6"
           style={{ color: scheme.textPrimary }}
         >
           <Outlet />
         </main>
       </div>
+
+      {/* 移动端底部 Dock 栏 */}
+      <Dock />
 
       {/* 后台任务面板 */}
       <TaskPanel />

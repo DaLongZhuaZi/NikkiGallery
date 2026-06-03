@@ -129,9 +129,6 @@ export class MetadataService {
 
       const gamePath = configService.get('gamePath')
       let uid = accountService.getCurrentAccount()?.uid
-      if (!uid) {
-        uid = ImageDecryptService.findUserUid(gamePath) || undefined
-      }
 
       const result = await ImageDecryptService.decryptImage(imagePath, uid)
       
@@ -175,13 +172,14 @@ export class MetadataService {
 
       // 如果是对象格式
       if (typeof data === 'object') {
+        const cam = data.cameraParams || data.CameraParams || data
         return {
           focalLength: data.focalLength || data.focal_length,
           aperture: data.aperture || data.fNumber,
           fov: data.fov,
-          positionX: data.positionX || data.position_x,
-          positionY: data.positionY || data.position_y,
-          positionZ: data.positionZ || data.position_z,
+          positionX: cam.x || cam.X || cam.positionX || cam.PositionX || data.positionX || data.position_x,
+          positionY: cam.z || cam.Z || cam.positionZ || cam.PositionZ || data.positionY || data.position_y,
+          positionZ: cam.y || cam.Y || cam.positionY || cam.PositionY || data.positionZ || data.position_z,
           pitch: data.pitch,
           yaw: data.yaw,
           roll: data.roll,
@@ -244,6 +242,36 @@ export class MetadataService {
             vignetteIntensity: info.vignetteIntensity,
             weatherType: gameMetadata.SocialPhoto.WeatherType,
             gameTime: time ? `${time.day}d ${time.hour}:${time.min}` : undefined,
+            extendedMetadata: {
+              giantState: gameMetadata.SocialPhoto.GiantState,
+              hiddenState: info.nikkiHidden,
+              poseId: info.poseId,
+              lightId: info.lightId !== 'None' ? String(info.lightId) : undefined,
+              lightStrength: info.lightStrength,
+              clothes: info.nikkiClothes,
+              diyCount: info.nikkiDIY ? info.nikkiDIY.length : 0,
+              transform: {
+                loc: { x: info.nikkiLocX, y: info.nikkiLocY, z: info.nikkiLocZ },
+                rot: { pitch: info.nikkiRotPitch, yaw: info.nikkiRotYaw, roll: info.nikkiRotRoll },
+                scale: { x: info.nikkiScaleX, y: info.nikkiScaleY, z: info.nikkiScaleZ }
+              },
+              cameraActorTransform: {
+                loc: { x: info.cameraActorLocX, y: info.cameraActorLocY, z: info.cameraActorLocZ },
+                rot: { pitch: info.cameraActorRotPitch, yaw: info.cameraActorRotYaw, roll: info.cameraActorRotRoll }
+              },
+              interactions: gameMetadata.SocialPhoto.Interactions,
+              puzzleGameTag: gameMetadata.PuzzleGamePlugin?.Tag,
+              riskPhotos: gameMetadata.RiskPhoto ? Object.entries(gameMetadata.RiskPhoto) : undefined,
+              interactivePhotos: gameMetadata.InteractivePhoto ? Object.entries(gameMetadata.InteractivePhoto) : undefined,
+              magicballColorIds: info.magicballColorIds,
+              daMiaoInfo: gameMetadata.SocialPhoto.DaMiaoInfo,
+              weaponSnapShot: gameMetadata.SocialPhoto.WeaponSnapShot,
+              carrierInfo: gameMetadata.SocialPhoto.CarrierInfo,
+              mountInfo: gameMetadata.SocialPhoto.MountInfo,
+              photoWallIds: gameMetadata.PhotoWallPlugin?.photoID ? 
+                (Array.isArray(gameMetadata.PhotoWallPlugin.photoID) ? gameMetadata.PhotoWallPlugin.photoID : [gameMetadata.PhotoWallPlugin.photoID]) : undefined,
+              rawCameraParams: gameMetadata.SocialPhoto.CameraParams
+            }
           }
         } else if (gameMetadata.cameraParams || gameMetadata.CameraParams) {
           cameraParams = this.parseCameraParams(gameMetadata.cameraParams || gameMetadata.CameraParams)

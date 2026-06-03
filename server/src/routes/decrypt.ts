@@ -58,23 +58,8 @@ router.post('/image/:id', async (req: Request, res: Response) => {
       })
     }
 
-    // 如果没有提供UID，尝试自动查找
-    let userUid = uid
-    if (!userUid) {
-      const config = configService.getAll()
-      if (config.gamePath) {
-        userUid = ImageDecryptService.findUserUid(config.gamePath)
-      }
-    }
-
-    if (!userUid) {
-      return res.status(400).json({
-        success: false,
-        error: 'UID is required for decryption. Please provide UID or configure game path.',
-      })
-    }
-
-    const result = await ImageDecryptService.decryptImage(image.path, userUid)
+    // 取消了强制校验 UID，因为 decryptImage 内部会自动推断
+    const result = await ImageDecryptService.decryptImage(image.path, uid)
 
     // 如果解密成功，更新数据库中的元数据
     if (result.metadata) {
@@ -115,21 +100,7 @@ router.post('/batch', async (req: Request, res: Response) => {
       })
     }
 
-    // 如果没有提供UID，尝试自动查找
-    let userUid = uid
-    if (!userUid) {
-      const config = configService.getAll()
-      if (config.gamePath) {
-        userUid = ImageDecryptService.findUserUid(config.gamePath)
-      }
-    }
-
-    if (!userUid) {
-      return res.status(400).json({
-        success: false,
-        error: 'UID is required for decryption',
-      })
-    }
+    // 取消了强制校验 UID，因为 decryptImage 内部会自动推断
 
     const results = []
     let successCount = 0
@@ -144,7 +115,7 @@ router.post('/batch', async (req: Request, res: Response) => {
           continue
         }
 
-        const result = await ImageDecryptService.decryptImage(image.path, userUid)
+        const result = await ImageDecryptService.decryptImage(image.path, uid)
 
         if (result.metadata) {
           ImageModel.update(imageId, {
@@ -202,7 +173,8 @@ router.get('/uid', async (req: Request, res: Response) => {
       })
     }
 
-    const uid = ImageDecryptService.findUserUid(config.gamePath)
+    const uids = ImageDecryptService.findPossibleUids('', config.gamePath)
+    const uid = uids.length > 0 ? uids[0] : null
 
     res.json({
       success: true,

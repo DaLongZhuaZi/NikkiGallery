@@ -1,53 +1,23 @@
 import { useTheme, ThemeMode, colorSchemes } from '@/contexts/ThemeContext'
-import { Check, Moon, Sun } from 'lucide-react'
+import { Check, Star, Zap, Droplet, Moon, Sparkles } from 'lucide-react'
 
-const themeOptions: { mode: ThemeMode; label: string; emoji: string; desc: string }[] = [
-  { mode: 'sakura-pink', label: '樱花粉', emoji: '🌸', desc: '暖暖专属 · 温柔浪漫' },
-  { mode: 'light', label: '亮白', emoji: '☀️', desc: '清新明亮 · 简约干净' },
-  { mode: 'dark', label: '深色', emoji: '🌙', desc: '护眼暗色 · 酷炫沉稳' },
-  { mode: 'sky-blue', label: '天蓝', emoji: '🌊', desc: '清新蓝调 · 自然舒适' },
-  { mode: 'warm-yellow', label: '暖黄', emoji: '🌻', desc: '温暖阳光 · 活力满满' },
+const themeOptions: { mode: ThemeMode; label: string; icon: React.ReactNode; desc: string }[] = [
+  { mode: 'nikki-fantasy', label: '幻梦奇缘', icon: <Sparkles className="w-5 h-5 text-pink-400" />, desc: '无限暖暖 · 梦幻樱花' },
+  { mode: 'cyber-neon', label: '赛博霓虹', icon: <Zap className="w-5 h-5 text-cyan-400" />, desc: '赛博朋克 · 故障扫描' },
+  { mode: 'crystal-palace', label: '水晶神殿', icon: <Droplet className="w-5 h-5 text-teal-400" />, desc: '原神塞尔达 · 清新丁达尔' },
+  { mode: 'starry-night', label: '奇想星海', icon: <Star className="w-5 h-5 text-yellow-400" />, desc: '奇幻星空 · 璀璨银河' },
+  { mode: 'abyss-dark', label: '深渊余烬', icon: <Moon className="w-5 h-5 text-red-500" />, desc: '暗黑魂系 · 飘落火星' },
 ]
 
 export default function ThemeSwitcher() {
-  const { mode, setMode, scheme, toggleDark } = useTheme()
+  const { mode, setMode, scheme } = useTheme()
 
   return (
     <div className="space-y-4">
-      {/* 快速切换 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-medium" style={{ color: scheme.textPrimary }}>深色模式</h3>
-          <p className="text-xs mt-0.5" style={{ color: scheme.textTertiary }}>快速切换明暗主题</p>
-        </div>
-        <button
-          onClick={toggleDark}
-          className="relative w-14 h-7 rounded-full transition-all duration-300"
-          style={{ 
-            background: mode === 'dark' ? scheme.primary : scheme.border,
-          }}
-        >
-          <div
-            className="absolute top-0.5 w-6 h-6 rounded-full flex items-center justify-center transition-all duration-300"
-            style={{ 
-              left: mode === 'dark' ? '30px' : '2px',
-              background: scheme.bgCard,
-              boxShadow: scheme.shadowSm,
-            }}
-          >
-            {mode === 'dark' ? (
-              <Moon className="w-3.5 h-3.5" style={{ color: scheme.primary }} />
-            ) : (
-              <Sun className="w-3.5 h-3.5" style={{ color: scheme.textSecondary }} />
-            )}
-          </div>
-        </button>
-      </div>
-
       {/* 主题选择 */}
       <div>
-        <h3 className="text-sm font-medium mb-3" style={{ color: scheme.textPrimary }}>主题配色</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <h3 className="text-sm font-medium mb-3" style={{ color: scheme.textPrimary }}>沉浸式主题 (Immersion Themes)</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {themeOptions.map((opt) => {
             const isActive = mode === opt.mode
             const optScheme = colorSchemes[opt.mode]
@@ -56,48 +26,57 @@ export default function ThemeSwitcher() {
               <button
                 key={opt.mode}
                 onClick={() => setMode(opt.mode)}
-                className="relative rounded-xl p-3 text-left transition-all duration-200"
+                className="relative rounded-2xl p-4 text-left transition-all duration-300 overflow-hidden group hover:-translate-y-1"
                 style={{
                   background: isActive ? optScheme.bgActive : optScheme.bgCard,
                   border: `2px solid ${isActive ? optScheme.primary : optScheme.border}`,
-                  boxShadow: isActive ? `0 0 0 1px ${optScheme.primary}` : optScheme.shadowSm,
+                  boxShadow: isActive ? `0 0 15px ${optScheme.primary}40` : optScheme.shadowSm,
                 }}
               >
+                {/* 悬浮背景流光 */}
+                <div 
+                  className="absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity duration-500 pointer-events-none"
+                  style={{
+                    background: `linear-gradient(45deg, transparent, ${optScheme.primary}, transparent)`
+                  }}
+                />
+
                 {/* 选中指示 */}
                 {isActive && (
                   <div 
-                    className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center"
-                    style={{ background: optScheme.primary }}
+                    className="absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center animate-in zoom-in duration-300"
+                    style={{ background: optScheme.primary, boxShadow: `0 0 10px ${optScheme.primary}` }}
                   >
-                    <Check className="w-3 h-3" style={{ color: optScheme.textInverse }} />
+                    <Check className="w-3.5 h-3.5" style={{ color: optScheme.textInverse }} />
                   </div>
                 )}
 
-                {/* 预览色块 */}
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-lg">{opt.emoji}</span>
+                {/* 预览色块与图标 */}
+                <div className="flex items-center gap-3 mb-3 relative z-10">
                   <div 
-                    className="w-6 h-6 rounded-full"
+                    className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg"
                     style={{ 
-                      background: `linear-gradient(135deg, ${optScheme.gradientStart}, ${optScheme.gradientEnd})`,
-                      boxShadow: `0 2px 8px ${optScheme.primary}40`,
+                      background: `linear-gradient(135deg, ${optScheme.gradientStart}30, ${optScheme.gradientEnd}30)`,
+                      border: `1px solid ${optScheme.primary}50`
                     }}
-                  />
+                  >
+                    {opt.icon}
+                  </div>
+                  <div>
+                    <p className="text-base font-bold" style={{ color: optScheme.textPrimary }}>
+                      {opt.label}
+                    </p>
+                    <p className="text-xs mt-0.5 opacity-80" style={{ color: optScheme.textSecondary }}>
+                      {opt.desc}
+                    </p>
+                  </div>
                 </div>
 
-                <p className="text-sm font-medium" style={{ color: optScheme.textPrimary }}>
-                  {opt.label}
-                </p>
-                <p className="text-xs mt-0.5" style={{ color: optScheme.textSecondary }}>
-                  {opt.desc}
-                </p>
-
                 {/* 配色预览条 */}
-                <div className="flex gap-1 mt-2">
-                  <div className="flex-1 h-1.5 rounded-full" style={{ background: optScheme.bgMain }} />
-                  <div className="flex-1 h-1.5 rounded-full" style={{ background: optScheme.primary }} />
-                  <div className="flex-1 h-1.5 rounded-full" style={{ background: optScheme.bgCard }} />
-                  <div className="flex-1 h-1.5 rounded-full" style={{ background: optScheme.border }} />
+                <div className="flex gap-1.5 mt-3 relative z-10">
+                  <div className="flex-1 h-2 rounded-full" style={{ background: optScheme.bgMain }} />
+                  <div className="flex-1 h-2 rounded-full" style={{ background: optScheme.primary }} />
+                  <div className="flex-[2] h-2 rounded-full" style={{ background: `linear-gradient(90deg, ${optScheme.gradientStart}, ${optScheme.gradientEnd})` }} />
                 </div>
               </button>
             )

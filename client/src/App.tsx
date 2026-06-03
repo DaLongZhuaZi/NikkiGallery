@@ -3,6 +3,7 @@ import { Toaster } from 'react-hot-toast'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import Layout from './components/common/Layout'
+import GlobalEffects from './components/effects/GlobalEffects'
 import HomePage from './pages/Home'
 import GalleryPage from './pages/Gallery'
 import ShareCodesPage from './pages/ShareCodes'
@@ -19,12 +20,18 @@ import ResourcesPage from './pages/Resources'
 import GifConverterPage from './pages/GifConverter'
 import PluginsPage from './pages/Plugins'
 import ArchivesPage from './pages/Archives'
+import WardrobePage from './pages/Wardrobe'
+import TagsPage from './pages/Tags'
+import LivePhotoPage from './pages/LivePhoto'
+import DashboardPage from './pages/Dashboard'
+import CommandPalette from './components/common/CommandPalette'
 
 function AppContent() {
   const { scheme } = useTheme()
   
   return (
     <ErrorBoundary>
+      <GlobalEffects />
       <Toaster
         position="top-right"
         toastOptions={{
@@ -50,6 +57,7 @@ function AppContent() {
           },
         }}
       />
+      <CommandPalette />
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={
@@ -135,6 +143,26 @@ function AppContent() {
           <Route path="archives" element={
             <ErrorBoundary>
               <ArchivesPage />
+            </ErrorBoundary>
+          } />
+          <Route path="wardrobe" element={
+            <ErrorBoundary>
+              <WardrobePage />
+            </ErrorBoundary>
+          } />
+          <Route path="tags" element={
+            <ErrorBoundary>
+              <TagsPage />
+            </ErrorBoundary>
+          } />
+          <Route path="live-photo" element={
+            <ErrorBoundary>
+              <LivePhotoPage />
+            </ErrorBoundary>
+          } />
+          <Route path="dashboard" element={
+            <ErrorBoundary>
+              <DashboardPage />
             </ErrorBoundary>
           } />
         </Route>

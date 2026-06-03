@@ -174,13 +174,17 @@ export default function SettingsPage() {
 
             <div>
               <label className="block text-sm font-medium mb-2" style={{ color: scheme.textSecondary }}>
-                游戏 UID (用于解密图片元数据)
+                游戏 UIDs (用于解密图片元数据，支持多个)
               </label>
               <input
                 type="text"
-                value={localConfig.uid || ''}
-                onChange={(e) => setLocalConfig({ ...localConfig, uid: e.target.value.replace(/\D/g, '') })}
-                placeholder="请输入游戏内的数字UID"
+                value={localConfig.uids ? localConfig.uids.join(', ') : ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const uids = val.split(',').map(s => s.trim().replace(/\D/g, '')).filter(s => s.length > 0);
+                  setLocalConfig({ ...localConfig, uids });
+                }}
+                placeholder="请输入数字UID，多个UID用逗号分隔"
                 className="w-full px-4 py-2 rounded-lg text-sm transition-all"
                 style={{
                   backgroundColor: scheme.bgInput,
@@ -192,7 +196,7 @@ export default function SettingsPage() {
                 onBlur={e => (e.target.style.borderColor = scheme.border)}
               />
               <p className="text-xs mt-1" style={{ color: scheme.textTertiary }}>
-                无限暖暖的截图中隐藏了详细的相机和人物参数，需依赖您的真实 UID 才能解密。若提取元数据为空，请手动填入您的游戏 UID (9位数字)。
+                无限暖暖的截图中隐藏了详细的相机和人物参数，需依赖您的真实 UID 才能解密。若提取元数据为空，请手动填入您的游戏 UID (9位数字)，多个可用逗号分隔。
               </p>
             </div>
 
@@ -247,10 +251,17 @@ export default function SettingsPage() {
 
             {selectedFolderPaths.length > 0 && (
               <div className="p-3 rounded-lg" style={{ backgroundColor: `${scheme.info}10` }}>
-                <p className="text-sm flex items-center gap-2" style={{ color: scheme.info }}>
+                <p className="text-sm flex items-center gap-2 mb-2" style={{ color: scheme.info }}>
                   <HardDrive className="w-4 h-4" />
-                  已选择 {selectedFolderPaths.length} 个截图文件夹
+                  已包含 {selectedFolderPaths.length} 个截图文件夹
                 </p>
+                <div className="max-h-32 overflow-y-auto space-y-1 mt-2 p-1">
+                  {selectedFolderPaths.map((p, idx) => (
+                    <div key={idx} className="text-xs truncate font-mono" style={{ color: scheme.textSecondary }} title={p}>
+                      • {p}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

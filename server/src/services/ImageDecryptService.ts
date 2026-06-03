@@ -47,12 +47,16 @@ try {
 }
 
 let media_key_from_str: any
+let media_key_camera_param: any
+let media_decrypt: any
 let free_media_key: any
 let free_media_decryption_result: any
 let media_decode_file_unchecked: any
 
 if (dllLib) {
   media_key_from_str = dllLib.func('media_key_from_str', MediaKey, ['str'])
+  media_key_camera_param = dllLib.func('media_key_camera_param', MediaKey, [])
+  media_decrypt = dllLib.func('media_decrypt', MediaDecryptionResult, ['const uint8_t*', 'size_t', MediaKey])
   free_media_key = dllLib.func('free_media_key', 'void', [MediaKey])
   free_media_decryption_result = dllLib.func('free_media_decryption_result', 'void', [MediaDecryptionResult])
   media_decode_file_unchecked = dllLib.func('media_decode_file_unchecked', MediaDecryptionResult, ['const uint8_t*', 'size_t', 'str', MediaKey])
@@ -88,12 +92,39 @@ export class ImageDecryptService {
   }
 
   /**
+   * 智能匹配文件路径中的 UID 或尝试系统配置的所有 UID
+   */
+  static findPossibleUids(filePath: string, gamePath?: string): string[] {
+    const uids = new Set<string>()
+
+    // 1. 尝试从文件路径中提取全数字的 UID（例如 .../100045859/...）
+    const pathParts = filePath.replace(/\\/g, '/').split('/')
+    for (const part of pathParts) {
+      if (/^\d{6,15}$/.test(part)) {
+        uids.add(part)
+      }
+    }
+
+    // 2. 尝试系统配置的 UIDs
+    const configuredUids = configService.get('uids') as string[] | undefined
+    if (configuredUids && configuredUids.length > 0) {
+      for (const uid of configuredUids) {
+        if (uid && uid.trim()) {
+           uids.add(uid.trim())
+        }
+      }
+    }
+
+    return Array.from(uids)
+  }
+
+  /**
    * 解密游戏图像文件
    * @param filePath 图像文件路径
-   * @param uid 用户UID（可选）
+   * @param preferredUid 用户UID（可选，如果传入则优先尝试，否则使用智能推断）
    * @returns 解密后的数据
    */
-  static async decryptImage(filePath: string, uid?: string): Promise<DecryptedData> {
+  static async decryptImage(filePath: string, preferredUid?: string): Promise<DecryptedData> {
     try {
       if (!fs.existsSync(filePath)) {
         throw new Error(`File not found: ${filePath}`)
@@ -109,26 +140,42 @@ export class ImageDecryptService {
       let metadata: any = null
       let hasEncryptedData = buffer.length > eoiIndex + 2
 
-      if (hasEncryptedData && uid && dllLib) {
-        try {
-          const key = media_key_from_str(uid)
-          if (key) {
-            const flag = Buffer.from([0xFF, 0xD9])
-            const result = media_decode_file_unchecked(flag, 2, filePath, key)
-            
-            if (result.status === 0 && result.data && result.len > 0) {
-              const decryptedBuffer = koffi.decode(result.data, 'uint8_t', result.len) as Buffer
-              const jsonText = Buffer.from(decryptedBuffer).toString('utf-8').trim()
-              metadata = this.parseNuan5Json(jsonText)
-            } else {
-              logger.warn(`media_decode_file_unchecked failed with status ${result.status} for ${filePath}`)
+      if (hasEncryptedData && dllLib) {
+        const candidateUids = preferredUid ? [preferredUid, ...this.findPossibleUids(filePath)] : this.findPossibleUids(filePath)
+        // 去重
+        const uniqueUids = Array.from(new Set(candidateUids))
+
+        for (const uidToTry of uniqueUids) {
+          if (!uidToTry) continue
+
+          try {
+            const key = media_key_from_str(uidToTry)
+            if (key) {
+              const flag = Buffer.from([0xFF, 0xD9])
+              const result = media_decode_file_unchecked(flag, 2, filePath, key)
+              
+              if (result.status === 0 && result.data && result.len > 0) {
+                const decryptedBuffer = koffi.decode(result.data, 'uint8_t', result.len) as Buffer
+                const jsonText = Buffer.from(decryptedBuffer).toString('utf-8').trim()
+                // 尝试解析，如果成功则跳出循环
+                try {
+                  metadata = this.parseNuan5Json(jsonText)
+                  if (metadata) {
+                    free_media_decryption_result(result)
+                    free_media_key(key)
+                    break
+                  }
+                } catch (e) {
+                   // 解析失败说明密钥可能不对，继续尝试
+                }
+              }
+              
+              free_media_decryption_result(result)
+              free_media_key(key)
             }
-            
-            free_media_decryption_result(result)
-            free_media_key(key)
+          } catch (decryptError) {
+            // 继续下一个UID
           }
-        } catch (decryptError) {
-          logger.warn(`Failed to decrypt metadata from ${filePath} via DLL:`, decryptError)
         }
       }
 
@@ -141,6 +188,64 @@ export class ImageDecryptService {
       logger.error(`Failed to decrypt image ${filePath}:`, error)
       throw error
     }
+  }
+
+  /**
+   * 解密嵌套的 CameraParams 字符串
+   * @param encryptedData 加密的 Base64 字符串
+   * @returns 解密后的 JSON 对象或数组
+   */
+  static decryptCameraParams(encryptedData: string): any | null {
+    if (!dllLib || !media_key_camera_param || !media_decrypt) return null
+
+    try {
+      const key = media_key_camera_param()
+      if (key) {
+        const buffer = Buffer.from(encryptedData)
+        const result = media_decrypt(buffer, buffer.length, key)
+
+        let metadata = null
+        if (result.status === 0 && result.data && result.len > 0) {
+          const decryptedBuffer = koffi.decode(result.data, 'uint8_t', result.len) as Buffer
+          const jsonText = Buffer.from(decryptedBuffer).toString('utf-8').trim()
+          
+          // 提取 JSON 对象或数组
+          const startIdx = jsonText.indexOf('[') !== -1 
+            ? (jsonText.indexOf('{') !== -1 ? Math.min(jsonText.indexOf('['), jsonText.indexOf('{')) : jsonText.indexOf('['))
+            : jsonText.indexOf('{')
+            
+          if (startIdx !== -1) {
+            let braceCount = 0
+            let endIdx = 0
+            const openChar = jsonText[startIdx]
+            const closeChar = openChar === '[' ? ']' : '}'
+            
+            for (let i = startIdx; i < jsonText.length; i++) {
+              if (jsonText[i] === openChar) braceCount++
+              else if (jsonText[i] === closeChar) {
+                braceCount--
+                if (braceCount === 0) {
+                  endIdx = i
+                  break
+                }
+              }
+            }
+            
+            if (endIdx !== 0) {
+              const jsonStr = jsonText.substring(startIdx, endIdx + 1)
+              metadata = this.parseNuan5Json(jsonStr)
+            }
+          }
+        }
+        
+        free_media_decryption_result(result)
+        free_media_key(key)
+        return metadata
+      }
+    } catch (error) {
+      logger.warn('Failed to decrypt camera params via DLL:', error)
+    }
+    return null
   }
 
   /**
@@ -218,69 +323,6 @@ export class ImageDecryptService {
     } catch (error) {
       logger.warn('Failed to parse nuan5json, returning raw text:', error)
       return { rawText: text.substring(0, 1000) }
-    }
-  }
-
-  /**
-   * 从游戏目录读取用户UID
-   * @param gamePath 游戏安装路径
-   * @returns 用户UID或null
-   */
-  static findUserUid(gamePath: string): string | null {
-    try {
-      // 1. 尝试从系统设置中读取用户手动配置的 UID
-      const configuredUid = configService.get('uid')
-      if (configuredUid && configuredUid.trim() !== '') {
-        return configuredUid.trim()
-      }
-
-      // 2. 尝试从游戏配置文件中读取UID
-      // 常见位置：
-      // 1. 游戏安装目录下的配置文件
-      // 2. 用户文档目录下的游戏存档
-      // 3. AppData目录下的配置
-
-      const possiblePaths = [
-        path.join(gamePath, 'config.ini'),
-        path.join(gamePath, 'user.cfg'),
-        path.join(gamePath, 'settings.json'),
-      ]
-
-      for (const configPath of possiblePaths) {
-        if (fs.existsSync(configPath)) {
-          const content = fs.readFileSync(configPath, 'utf-8')
-
-          // 尝试提取UID
-          const uidMatch = content.match(/uid[=:]\s*["']?(\d+)["']?/i)
-          if (uidMatch) {
-            return uidMatch[1]
-          }
-        }
-      }
-
-      // 尝试从截图目录的元数据文件中提取
-      const screenshotDirs = [
-        path.join(gamePath, 'X6Game', 'ScreenShot'),
-        path.join(gamePath, 'ScreenShot'),
-      ]
-
-      for (const dir of screenshotDirs) {
-        if (fs.existsSync(dir)) {
-          const metaFiles = fs.readdirSync(dir).filter(f => f.endsWith('.meta') || f.endsWith('.json'))
-          for (const metaFile of metaFiles) {
-            const content = fs.readFileSync(path.join(dir, metaFile), 'utf-8')
-            const uidMatch = content.match(/uid[=:]\s*["']?(\d+)["']?/i)
-            if (uidMatch) {
-              return uidMatch[1]
-            }
-          }
-        }
-      }
-
-      return null
-    } catch (error) {
-      logger.error('Failed to find user UID:', error)
-      return null
     }
   }
 

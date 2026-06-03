@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Plus, Search, Filter, Download, Upload } from 'lucide-react'
+import { Plus, Search, Filter, Download, Upload, X, ClipboardPaste } from 'lucide-react'
 import { useShareStore } from '@/stores/useShareStore'
 import { useTheme } from '@/contexts/ThemeContext'
 import ShareCard from '@/components/share/ShareCard'
+import ShareCodeModal from '@/components/share/ShareCodeModal'
+import { importShareCodes, exportShareCodes } from '@/api/share'
 import toast from 'react-hot-toast'
 
 export default function ShareCodesPage() {
@@ -10,6 +12,10 @@ export default function ShareCodesPage() {
   const { scheme } = useTheme()
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [isImporting, setIsImporting] = useState(false)
 
   useEffect(() => {
     fetchShareCodes()
@@ -25,12 +31,42 @@ export default function ShareCodesPage() {
     setFilter({ type: type === 'all' ? undefined : type as any })
   }
 
-  const handleImport = () => {
-    toast.success('导入功能开发中')
+  const handleImport = async () => {
+    if (!importText.trim()) {
+      toast.error('请输入分享码')
+      return
+    }
+    setIsImporting(true)
+    try {
+      // 支持逗号/换行/空格分隔
+      const codes = importText
+        .split(/[\n,\s]+/)
+        .map(c => c.trim())
+        .filter(c => c.length > 0)
+      if (codes.length === 0) {
+        toast.error('未检测到有效的分享码')
+        setIsImporting(false)
+        return
+      }
+      await importShareCodes(codes)
+      toast.success(`成功导入 ${codes.length} 个分享码`)
+      setShowImportModal(false)
+      setImportText('')
+      fetchShareCodes()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || '导入失败')
+    } finally {
+      setIsImporting(false)
+    }
   }
 
-  const handleExport = () => {
-    toast.success('导出功能开发中')
+  const handleExport = async () => {
+    try {
+      await exportShareCodes()
+      toast.success('导出成功')
+    } catch (err: any) {
+      toast.error('导出失败')
+    }
   }
 
   const shareCodeTypes = [
@@ -62,7 +98,7 @@ export default function ShareCodesPage() {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <button
-            onClick={handleImport}
+            onClick={() => setShowImportModal(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95"
             style={{
               color: scheme.textSecondary,
@@ -86,6 +122,7 @@ export default function ShareCodesPage() {
             导出
           </button>
           <button
+            onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95"
             style={{
               background: `linear-gradient(135deg, ${scheme.gradientStart}, ${scheme.gradientEnd})`,
@@ -170,6 +207,70 @@ export default function ShareCodesPage() {
           </div>
           <p style={{ color: scheme.textSecondary }}>暂无分享码</p>
           <p className="text-sm mt-1" style={{ color: scheme.textTertiary }}>点击上方按钮添加分享码</p>
+        </div>
+      )}
+
+      {isModalOpen && <ShareCodeModal onClose={() => setIsModalOpen(false)} />}
+
+      {/* 导入弹窗 */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowImportModal(false)}>
+          <div
+            className="w-full max-w-lg p-6 rounded-2xl shadow-xl"
+            style={{ background: scheme.bgCard }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold" style={{ color: scheme.textPrimary }}>导入分享码</h3>
+              <button onClick={() => setShowImportModal(false)} className="p-1 rounded-lg hover:bg-gray-100">
+                <X className="w-5 h-5" style={{ color: scheme.textSecondary }} />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: scheme.textSecondary }}>
+                粘贴分享码（支持逗号、换行、空格分隔多个）
+              </label>
+              <textarea
+                value={importText}
+                onChange={e => setImportText(e.target.value)}
+                placeholder="例如:&#10;ABC123, DEF456&#10;GHI789"
+                rows={6}
+                className="w-full px-4 py-3 rounded-lg text-sm outline-none resize-none transition-all font-mono"
+                style={{
+                  backgroundColor: scheme.bgInput || scheme.bgHover,
+                  border: `1px solid ${scheme.border}`,
+                  color: scheme.textPrimary,
+                }}
+              />
+              <p className="text-xs mt-1" style={{ color: scheme.textTertiary }}>
+                支持染色码、家园码、相机码、DIY码、套装码
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-5">
+              <button
+                onClick={() => setShowImportModal(false)}
+                className="px-4 py-2 rounded-xl text-sm font-medium"
+                style={{ color: scheme.textSecondary }}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleImport}
+                disabled={isImporting}
+                className="flex items-center gap-2 px-5 py-2 text-white rounded-xl text-sm font-medium transition-all disabled:opacity-50"
+                style={{ background: `linear-gradient(135deg, ${scheme.gradientStart}, ${scheme.gradientEnd})` }}
+              >
+                {isImporting ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <ClipboardPaste className="w-4 h-4" />
+                )}
+                导入
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

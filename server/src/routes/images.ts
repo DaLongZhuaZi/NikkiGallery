@@ -10,6 +10,51 @@ import logger from '../utils/logger'
 
 const router = Router()
 
+// 衣柜封面配置文件路径
+const WARDROBE_COVERS_PATH = path.join(path.dirname(config.database.path), 'wardrobe-covers.json')
+
+function readWardrobeCovers(): Record<string, string> {
+  try {
+    if (fs.existsSync(WARDROBE_COVERS_PATH)) {
+      const data = fs.readFileSync(WARDROBE_COVERS_PATH, 'utf-8')
+      return JSON.parse(data)
+    }
+  } catch {
+    logger.warn('Failed to read wardrobe covers, using empty config')
+  }
+  return {}
+}
+
+function writeWardrobeCovers(covers: Record<string, string>): void {
+  try {
+    fs.writeFileSync(WARDROBE_COVERS_PATH, JSON.stringify(covers, null, 2), 'utf-8')
+  } catch (err) {
+    logger.error('Failed to write wardrobe covers:', err)
+  }
+}
+
+// 生成 ETag 并处理条件请求 (304 Not Modified)
+function setCacheHeadersAndCheck304(req: Request, res: Response, filePath: string): boolean {
+  try {
+    const stat = fs.statSync(filePath)
+    const etag = `"${stat.size.toString(16)}-${stat.mtimeMs.toString(16)}"`
+    const lastModified = stat.mtime.toUTCString()
+
+    res.setHeader('ETag', etag)
+    res.setHeader('Last-Modified', lastModified)
+
+    // 检查条件请求
+    const ifNoneMatch = req.headers['if-none-match']
+    const ifModifiedSince = req.headers['if-modified-since']
+
+    if (ifNoneMatch === etag || (ifModifiedSince && new Date(ifModifiedSince).getTime() >= stat.mtimeMs)) {
+      res.status(304).end()
+      return true // 已发送 304
+    }
+  } catch { /* stat 失败时跳过缓存检查 */ }
+  return false
+}
+
 // 获取图片列表
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -32,10 +77,78 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       sort_order: req.query.sortOrder as 'asc' | 'desc',
       page: req.query.page ? parseInt(req.query.page as string) : undefined,
       page_size: req.query.pageSize ? parseInt(req.query.pageSize as string) : undefined,
+      has_coords: req.query.hasCoords === 'true' ? true : req.query.hasCoords === 'false' ? false : undefined,
+      clothes_id: req.query.clothesId ? parseInt(req.query.clothesId as string) : undefined,
     }
 
     const result = await ImageService.getImages(filter)
     res.json({ success: true, data: result })
+  } catch (error) {
+    next(error)
+  }
+})
+
+// 获取衣柜所有服饰ID
+router.get('/wardrobe', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const ImageModel = (await import('../models/Image')).ImageModel
+    const wardrobe = ImageModel.getWardrobe()
+    res.json({ success: true, data: wardrobe })
+  } catch (error) {
+    next(error)
+  }
+})
+
+// 获取衣柜详情（带封面图片ID和图片数量）
+router.get('/wardrobe/detail', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { ImageModel } = await import('../models/Image')
+    const wardrobeItems = ImageModel.getWardrobeWithCovers()
+
+    // 读取自定义封面配置
+    const customCovers = readWardrobeCovers()
+
+    // 合并自定义封面
+    const result = wardrobeItems.map(item => ({
+      ...item,
+      customCoverImageId: customCovers[String(item.clothesId)] || null,
+      // 最终使用的封面：自定义 > 自动
+      coverImageId: customCovers[String(item.clothesId)] || item.coverImageId,
+    }))
+
+    res.json({ success: true, data: result })
+  } catch (error) {
+    next(error)
+  }
+})
+
+// 设置服饰自定义封面
+router.put('/wardrobe/covers', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { clothesId, imageId } = req.body
+    if (clothesId === undefined || !imageId) {
+      return res.status(400).json({ success: false, error: '缺少 clothesId 或 imageId' })
+    }
+
+    const covers = readWardrobeCovers()
+    covers[String(clothesId)] = imageId
+    writeWardrobeCovers(covers)
+
+    res.json({ success: true, data: { clothesId, imageId } })
+  } catch (error) {
+    next(error)
+  }
+})
+
+// 删除服饰自定义封面（恢复自动封面）
+router.delete('/wardrobe/covers/:clothesId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { clothesId } = req.params
+    const covers = readWardrobeCovers()
+    delete covers[clothesId]
+    writeWardrobeCovers(covers)
+
+    res.json({ success: true })
   } catch (error) {
     next(error)
   }
@@ -85,7 +198,27 @@ router.get('/:id/info', async (req: Request, res: Response, next: NextFunction) 
   }
 })
 
-// 获取缩略图文件
+// 批量获取缩略图 URL 映射
+router.post('/thumbnails/batch', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { imageIds } = req.body
+    if (!Array.isArray(imageIds) || imageIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'imageIds must be a non-empty array' })
+    }
+
+    const result: Record<string, string> = {}
+    for (const id of imageIds) {
+      // 直接构造缩略图 URL 路径，让浏览器利用 HTTP 缓存
+      result[id] = `/api/images/${id}/thumbnail?size=small`
+    }
+
+    res.json({ success: true, data: result })
+  } catch (error) {
+    next(error)
+  }
+})
+
+// 获取缩略图文件（支持 small/medium/large 多尺寸）
 router.get('/:id/thumbnail', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const image = await ImageService.getImageById(req.params.id)
@@ -93,30 +226,29 @@ router.get('/:id/thumbnail', async (req: Request, res: Response, next: NextFunct
       throw AppError.notFound('Image not found')
     }
 
-    // 如果缩略图不存在，自动生成
-    if (!image.thumbnailPath || !fs.existsSync(image.thumbnailPath)) {
-      const generatedPath = await ImageService.generateThumbnail(req.params.id)
-      if (!generatedPath) {
-        // 如果生成失败，返回原始图片
-        if (fs.existsSync(image.path)) {
-          res.setHeader('Content-Type', image.mimeType || 'image/jpeg')
-          res.setHeader('Cache-Control', 'public, max-age=86400')
-          return res.sendFile(path.resolve(image.path))
-        }
+    const size = (['small', 'medium', 'large'].includes(req.query.size as string) ? req.query.size : 'medium') as 'small' | 'medium' | 'large'
+
+    // 尝试获取指定尺寸的缩略图路径
+    let thumbnailPath = ImageService.getThumbnailPath(req.params.id, size)
+
+    // 如果不存在，自动生成
+    if (!thumbnailPath) {
+      const generatedPath = await ImageService.generateThumbnail(req.params.id, size)
+      if (generatedPath) {
+        thumbnailPath = generatedPath
+      } else if (fs.existsSync(image.path)) {
+        // 生成失败，返回原始图片
+        res.setHeader('Content-Type', image.mimeType || 'image/jpeg')
+        res.setHeader('Cache-Control', 'public, max-age=86400')
+        return res.sendFile(path.resolve(image.path))
+      } else {
         throw AppError.notFound('Thumbnail generation failed and original image not found')
       }
     }
 
-    // 重新获取图片信息以获取最新的 thumbnailPath
-    const updatedImage = await ImageService.getImageById(req.params.id)
-    const thumbnailPath = updatedImage?.thumbnailPath
-
-    if (!thumbnailPath || !fs.existsSync(thumbnailPath)) {
-      throw AppError.notFound('Thumbnail file not found')
-    }
-
     res.setHeader('Content-Type', 'image/jpeg')
     res.setHeader('Cache-Control', 'public, max-age=86400')
+    if (setCacheHeadersAndCheck304(req, res, thumbnailPath)) return
     res.sendFile(path.resolve(thumbnailPath))
   } catch (error) {
     next(error)
@@ -138,6 +270,7 @@ router.get('/:id/file', async (req: Request, res: Response, next: NextFunction) 
     res.setHeader('Content-Type', image.mimeType || 'application/octet-stream')
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(image.filename)}"`)
     res.setHeader('Cache-Control', 'public, max-age=86400')
+    if (setCacheHeadersAndCheck304(req, res, image.path)) return
     res.sendFile(path.resolve(image.path))
   } catch (error) {
     next(error)
@@ -159,6 +292,24 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
     }
 
     res.json({ success: true, data: image })
+  } catch (error) {
+    next(error)
+  }
+})
+// 下载图片
+router.get('/:id/download', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const image = await ImageService.getImageById(req.params.id)
+    if (!image) {
+      throw AppError.notFound('Image not found')
+    }
+
+    const imagePath = image.path
+    if (!fs.existsSync(imagePath)) {
+      throw AppError.notFound('Original image file not found')
+    }
+
+    res.download(imagePath, image.filename)
   } catch (error) {
     next(error)
   }
@@ -212,6 +363,13 @@ router.post('/batch', async (req: Request, res: Response, next: NextFunction) =>
     switch (action) {
       case 'delete':
         result = await ImageService.batchDeleteImages(imageIds, req.body.deleteFiles)
+        break
+      case 'move':
+        if (!targetAlbumId) {
+          throw AppError.badRequest('Target album ID is required for move action')
+        }
+        const BatchOperationService = (await import('../services/BatchOperationService')).default
+        result = await BatchOperationService.getInstance().batchMoveToAlbum(imageIds, { targetAlbumId })
         break
       case 'favorite':
         result = await ImageService.batchUpdateFavorite(imageIds, favorite)

@@ -11,7 +11,8 @@ interface ImageStore {
   total: number
   page: number
   pageSize: number
-  imageStats: { total: number; aiProcessed: number }
+  imageStats: { total: number; aiProcessed: number; favorites: number; trash: number }
+  statsLastFetchedAt: number
   
   // Actions
   fetchImages: (albumId?: string) => Promise<void>
@@ -42,7 +43,8 @@ export const useImageStore = create<ImageStore>((set, get) => ({
   total: 0,
   page: 1,
   pageSize: 50,
-  imageStats: { total: 0, aiProcessed: 0 },
+  imageStats: { total: 0, aiProcessed: 0, favorites: 0, trash: 0 },
+  statsLastFetchedAt: 0,
 
   fetchImages: async (albumId?: string) => {
     set({ loading: true, error: null })
@@ -91,9 +93,11 @@ export const useImageStore = create<ImageStore>((set, get) => ({
   },
 
   fetchImageStats: async () => {
+    // 30秒内不重复请求
+    if (Date.now() - get().statsLastFetchedAt < 30_000) return
     try {
       const stats = await imageApi.getImageStats()
-      set({ imageStats: stats })
+      set({ imageStats: stats, statsLastFetchedAt: Date.now() })
     } catch (error) {
       // 静默失败，不影响主流程
       console.warn('Failed to fetch image stats:', error)

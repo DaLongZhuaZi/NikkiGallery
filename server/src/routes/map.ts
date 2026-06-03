@@ -63,6 +63,51 @@ router.get('/regions', (req: Request, res: Response) => {
 })
 
 /**
+ * POST /api/map/batch-coord-to-pixel
+ * 批量转换游戏坐标为像素坐标
+ */
+router.post('/batch-coord-to-pixel', (req: Request, res: Response) => {
+  try {
+    const { coords, mapId } = req.body
+    if (!Array.isArray(coords)) {
+      return res.status(400).json({ success: false, message: 'coords must be an array' })
+    }
+
+    const results = coords.map((c: any) => {
+      try {
+        let targetMapId = mapId ? parseInt(mapId as string) : 1
+        
+        // 如果没有提供全局mapId且存在z坐标，则智能推断
+        if (!mapId && c.coordZ !== undefined) {
+          const regions = gameMapService.getRegionByCoordinate({ x: c.coordX, y: c.coordY, z: c.coordZ })
+          if (regions.length > 0) {
+            targetMapId = regions[0].mapId
+          }
+        }
+
+        const pixel = gameMapService.coordToPixel(targetMapId, { x: c.coordX, y: c.coordY })
+        return {
+          ...pixel, // pixelX, pixelY 之前没有返回名字对不上的问题，看 GameMapService coordToPixel 返回 {x, y}
+          pixelX: pixel.x,
+          pixelY: pixel.y,
+          mapId: String(targetMapId)
+        }
+      } catch (e) {
+        return null
+      }
+    })
+
+    res.json({
+      success: true,
+      data: results,
+    })
+  } catch (error) {
+    logger.error('Batch coord conversion failed:', error)
+    res.status(500).json({ success: false, message: '转换失败' })
+  }
+})
+
+/**
  * POST /api/map/coord-to-pixel
  * 将游戏坐标转换为地图像素坐标
  */

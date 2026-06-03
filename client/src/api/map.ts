@@ -24,7 +24,7 @@ export interface GameRegion {
   id: string
   name: string
   mapId: string
-  polygon: number[][]
+  polygon: { x: number, y: number }[]
   heightRange: {
     min: number
     max: number
@@ -64,6 +64,13 @@ export interface RegionDetectResponse {
   mapId: string | null
 }
 
+export interface BatchCoordToPixelRequest {
+  coords: { coordX: number; coordY: number; coordZ?: number; id?: string }[]
+  mapId?: string
+}
+
+export type BatchCoordToPixelResponse = ({ pixelX: number; pixelY: number; mapId: string } | null)[]
+
 export const mapApi = {
   /** 获取所有地图 */
   getMaps: async (): Promise<GameMap[]> => {
@@ -75,6 +82,12 @@ export const mapApi = {
   getRegions: async (mapId?: string): Promise<GameRegion[]> => {
     const params = mapId ? { mapId } : {}
     const response = await api.get('/map/regions', { params })
+    return response.data.data
+  },
+
+  /** 批量转换游戏坐标 */
+  batchCoordToPixel: async (req: BatchCoordToPixelRequest): Promise<BatchCoordToPixelResponse> => {
+    const response = await api.post('/map/batch-coord-to-pixel', req)
     return response.data.data
   },
 

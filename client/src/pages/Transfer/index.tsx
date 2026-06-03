@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useTransferStore } from '@/stores/useTransferStore'
+import { useImageStore } from '@/stores/useImageStore'
 import {
   Wifi, Upload, Download, History, Trash2, RefreshCw,
   Copy, QrCode, X, Check, Clock, FileUp, FileDown
@@ -10,6 +11,7 @@ import toast from 'react-hot-toast'
 
 export default function TransferPage() {
   const { scheme } = useTheme()
+  const { selectedImages } = useImageStore()
   const {
     serverStatus,
     isServerLoading,
@@ -188,30 +190,30 @@ export default function TransferPage() {
                 选择要分享给其他设备的文件，生成下载链接和二维码。
               </p>
 
-              {/* 文件选择（简化版，实际应从图片库选择） */}
+              {/* 文件选择（使用画廊中已选中的图片） */}
               <div
-                className="border-2 border-dashed rounded-lg p-8 text-center mb-4"
-                style={{ borderColor: scheme.borderLight }}
+                className="border-2 border-dashed rounded-lg p-8 text-center mb-4 transition-colors"
+                style={{
+                  borderColor: selectedImages.length > 0 ? scheme.primary : scheme.borderLight,
+                  backgroundColor: selectedImages.length > 0 ? scheme.primaryLight : 'transparent'
+                }}
               >
-                <FileDown className="w-12 h-12 mx-auto mb-3" style={{ color: scheme.textSecondary }} />
-                <p style={{ color: scheme.textSecondary }}>
-                  从图片库中选择文件进行分享
+                <FileDown className="w-12 h-12 mx-auto mb-3" style={{ color: selectedImages.length > 0 ? scheme.primary : scheme.textSecondary }} />
+                <p style={{ color: selectedImages.length > 0 ? scheme.primary : scheme.textSecondary }} className="font-medium">
+                  {selectedImages.length > 0 
+                    ? `已从画廊中选择 ${selectedImages.length} 张图片` 
+                    : '请先在画廊中选择图片'}
                 </p>
-                <button
-                  onClick={() => {
-                    // TODO: 打开文件选择器
-                    toast('文件选择功能开发中', { icon: '🔧' })
-                  }}
-                  className="mt-3 px-4 py-2 rounded-lg text-sm font-medium"
-                  style={{ background: scheme.primaryLight, color: scheme.primary }}
-                >
-                  选择文件
-                </button>
+                {selectedImages.length === 0 && (
+                  <p className="text-xs mt-2" style={{ color: scheme.textTertiary }}>
+                    前往左侧菜单栏的「全部照片」或任意相册，勾选照片后再返回此页面
+                  </p>
+                )}
               </div>
 
               <button
-                onClick={handleCreateDownload}
-                disabled={isTaskLoading || selectedFiles.length === 0}
+                onClick={() => createDownload(selectedImages)}
+                disabled={isTaskLoading || selectedImages.length === 0}
                 className="w-full py-3 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-opacity disabled:opacity-50"
                 style={{ background: scheme.primary, color: '#ffffff' }}
               >

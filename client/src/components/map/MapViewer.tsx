@@ -1,29 +1,35 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTheme } from '@/contexts/ThemeContext'
 import { mapApi, GameMap, GameRegion, RegionDetectResponse } from '@/api/map'
 import { MapPin, ZoomIn, ZoomOut, RotateCcw, Layers, Loader2 } from 'lucide-react'
 
-interface MapViewerProps {
-  /** 游戏坐标 X */
-  coordX?: number
-  /** 游戏坐标 Y */
-  coordY?: number
-  /** 游戏坐标 Z */
-  coordZ?: number
-  /** 指定地图ID，不传则自动检测 */
+export interface MapMarker {
+  id: string
+  x: number
+  y: number
+  imageUrl?: string
+  image?: any
+  title?: string
   mapId?: string
-  /** 关闭回调 */
+}
+
+interface MapViewerProps {
+  coordX?: number
+  coordY?: number
+  coordZ?: number
+  mapId?: string
+  markers?: MapMarker[]
+  allowClickToMark?: boolean
+  onMarkerClick?: (marker: MapMarker) => void
   onClose?: () => void
 }
 
-/** 初始缩放比例 */
-const INITIAL_ZOOM = 0.5
-/** 最小/最大缩放 */
-const MIN_ZOOM = 0.1
+const INITIAL_ZOOM = 1
+const MIN_ZOOM = 0.02
 const MAX_ZOOM = 5
 
-export default function MapViewer({ coordX, coordY, coordZ, mapId: initialMapId, onClose }: MapViewerProps) {
-  const { scheme } = useTheme()
+export default function MapViewer({ coordX, coordY, coordZ, mapId: initialMapId, markers = [], onMarkerClick, allowClickToMark = false, onClose }: MapViewerProps) {
+  const { scheme, isDark } = useTheme()
   const containerRef = useRef<HTMLDivElement>(null)
 
   // 地图数据
@@ -31,27 +37,44 @@ export default function MapViewer({ coordX, coordY, coordZ, mapId: initialMapId,
   const [regions, setRegions] = useState<GameRegion[]>([])
   const [currentMapId, setCurrentMapId] = useState<string | null>(initialMapId || null)
   const [currentMap, setCurrentMap] = useState<GameMap | null>(null)
-
-  // 标记位置（图片像素坐标）
   const [markerPos, setMarkerPos] = useState<{ x: number; y: number } | null>(null)
   const [detectedRegion, setDetectedRegion] = useState<RegionDetectResponse | null>(null)
 
   // 交互状态
-  // position 是图片左上角在容器坐标系中的偏移
   const [zoom, setZoom] = useState(INITIAL_ZOOM)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [imageLoaded, setImageLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
   const imgRef = useRef<HTMLImageElement>(null)
   const [showRegions, setShowRegions] = useState(false)
 
-  // 容器尺寸（通过 ResizeObserver 跟踪）
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
   const [imgNaturalSize, setImgNaturalSize] = useState({ width: 0, height: 0 })
 
-  // ResizeObserver：跟踪容器尺寸变化
+  // ========== 性能优化核心：Refs 用于零开销读取 ==========
+  const posRef = useRef({ x: 0, y: 0 })
+  const zoomRef = useRef(INITIAL_ZOOM)
+  const dragStartRef = useRef({ x: 0, y: 0 })
+  const rafRef = useRef<number | null>(null)
+  const markerPosRef = useRef<{ x: number; y: number } | null>(null)
+  const scaleXRef = useRef(1)
+  const scaleYRef = useRef(1)
+  const applyZoomRef = useRef<(factor: number, mx?: number, my?: number) => void>(() => {})
+
+  // 触屏状态
+  const touchRef = useRef({
+    startX: 0, startY: 0,
+    startDist: 0, startZoom: 1,
+    isPinching: false,
+  })
+
+  // 同步 ref ← state
+  useEffect(() => { posRef.current = position }, [position])
+  useEffect(() => { zoomRef.current = zoom }, [zoom])
+  useEffect(() => { markerPosRef.current = markerPos }, [markerPos])
+
+  // ========== ResizeObserver ==========
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -65,7 +88,6 @@ export default function MapViewer({ coordX, coordY, coordZ, mapId: initialMapId,
       }
     })
     ro.observe(el)
-    // 初始化
     setContainerSize({
       width: Math.round(el.clientWidth),
       height: Math.round(el.clientHeight),
@@ -73,45 +95,35 @@ export default function MapViewer({ coordX, coordY, coordZ, mapId: initialMapId,
     return () => ro.disconnect()
   }, [])
 
-  // 加载地图列表
+  // ========== 加载地图列表 ==========
   useEffect(() => {
     const loadMaps = async () => {
       try {
         const mapList = await mapApi.getMaps()
         setMaps(mapList)
 
-        // 如果有坐标，自动检测区域和地图
         if (coordX !== undefined && coordY !== undefined && coordZ !== undefined) {
           const regionResult = await mapApi.detectRegion({ x: coordX, y: coordY, z: coordZ })
           setDetectedRegion(regionResult)
-
-          // 使用检测到的地图或指定的地图
           const targetMapId = initialMapId || regionResult.mapId || mapList[0]?.id
           if (targetMapId) {
             setCurrentMapId(String(targetMapId))
             const targetMap = mapList.find(m => String(m.id) === String(targetMapId))
             if (targetMap) {
               setCurrentMap(targetMap)
-
-              // 计算像素坐标
-              const pixelResult = await mapApi.coordToPixel({
-                coordX,
-                coordY,
-                mapId: targetMapId,
-              })
+              const pixelResult = await mapApi.coordToPixel({ coordX, coordY, mapId: targetMapId })
               if (typeof pixelResult.pixelX === 'number' && typeof pixelResult.pixelY === 'number' &&
                   !isNaN(pixelResult.pixelX) && !isNaN(pixelResult.pixelY)) {
                 setMarkerPos({ x: pixelResult.pixelX, y: pixelResult.pixelY })
-              } else {
-                console.warn('coordToPixel returned invalid values:', pixelResult)
               }
             }
           }
         } else {
-          // 没有坐标，显示第一张地图
-          if (mapList.length > 0) {
-            setCurrentMapId(mapList[0].id)
-            setCurrentMap(mapList[0])
+          const targetMapId = initialMapId || (mapList.length > 0 ? mapList[0].id : null)
+          if (targetMapId) {
+            setCurrentMapId(String(targetMapId))
+            const targetMap = mapList.find(m => String(m.id) === String(targetMapId))
+            if (targetMap) setCurrentMap(targetMap)
           }
         }
       } catch (error) {
@@ -120,35 +132,26 @@ export default function MapViewer({ coordX, coordY, coordZ, mapId: initialMapId,
         setLoading(false)
       }
     }
-
     loadMaps()
   }, [coordX, coordY, coordZ, initialMapId])
 
-  // 加载区域数据
   useEffect(() => {
     if (currentMapId) {
       mapApi.getRegions(currentMapId).then(setRegions).catch(console.error)
     }
   }, [currentMapId])
 
-  // 切换地图
+  // ========== 切换地图 ==========
   const handleMapChange = useCallback(async (newMapId: string) => {
     const map = maps.find(m => String(m.id) === String(newMapId))
     if (!map) return
-
     setCurrentMapId(newMapId)
     setCurrentMap(map)
     setImageLoaded(false)
     setMarkerPos(null)
-
-    // 如果有坐标，重新计算像素位置
     if (coordX !== undefined && coordY !== undefined) {
       try {
-        const pixelResult = await mapApi.coordToPixel({
-          coordX,
-          coordY,
-          mapId: newMapId,
-        })
+        const pixelResult = await mapApi.coordToPixel({ coordX, coordY, mapId: newMapId })
         if (typeof pixelResult.pixelX === 'number' && typeof pixelResult.pixelY === 'number' &&
             !isNaN(pixelResult.pixelX) && !isNaN(pixelResult.pixelY)) {
           setMarkerPos({ x: pixelResult.pixelX, y: pixelResult.pixelY })
@@ -159,84 +162,83 @@ export default function MapViewer({ coordX, coordY, coordZ, mapId: initialMapId,
     }
   }, [maps, coordX, coordY])
 
-  // 标记已定位的引用（防止重复定位）
   const positionedRef = useRef(false)
-  // 当前定位所用的 markerPos key（用于检测 markerPos 是否变化）
   const positionedMarkerKeyRef = useRef<string | null>(null)
 
-  /**
-   * fitToMarker：将视图定位到标记点，使其居中并自适应缩放。
-   * 可被 handleImageLoad、markerPos 变化 effect、handleReset 共用。
-   */
+  // ========== 图片缩放比例 ==========
+  const scaleX = (imgNaturalSize.width > 0 && currentMap?.mapSize?.width) ? imgNaturalSize.width / currentMap.mapSize.width : 1
+  const scaleY = (imgNaturalSize.height > 0 && currentMap?.mapSize?.height) ? imgNaturalSize.height / currentMap.mapSize.height : 1
+  useEffect(() => { scaleXRef.current = scaleX }, [scaleX])
+  useEffect(() => { scaleYRef.current = scaleY }, [scaleY])
+
+  // ========== 性能关键：缓存 inverseZoom ==========
+  const inverseZoom = useMemo(() => (zoom > 0 ? 1 / zoom : 1), [zoom])
+
+  // ========== fitToMarker ==========
   const fitToMarker = useCallback((marker: { x: number; y: number }, cw?: number, ch?: number) => {
     if (!imgRef.current || !currentMap) return
-
     const imgW = imgRef.current.naturalWidth
     const imgH = imgRef.current.naturalHeight
     const containerW = cw ?? containerSize.width
     const containerH = ch ?? containerSize.height
-
     if (imgW === 0 || imgH === 0 || containerW === 0 || containerH === 0) return
 
-    // 根据真实图片尺寸计算缩放：让图片完整适应容器
-    const fitZoom = Math.min(containerW / imgW, containerH / imgH) * 0.95 // 95% 容器，留点边距
-    const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fitZoom))
+    const clampedZoom = 1.0
+    const posX = containerW / 2 - (marker.x * scaleX) * clampedZoom
+    const posY = containerH / 2 - (marker.y * scaleY) * clampedZoom
 
-    // 定位：让标记点居中
-    const posX = containerW / 2 - marker.x * clampedZoom
-    const posY = containerH / 2 - marker.y * clampedZoom
-
+    zoomRef.current = clampedZoom
+    posRef.current = { x: posX, y: posY }
     setZoom(clampedZoom)
     setPosition({ x: posX, y: posY })
+  }, [currentMap, containerSize, scaleX, scaleY])
 
-    console.log('Map positioned:', {
-      imageSize: `${imgW}x${imgH}`,
-      containerSize: `${containerW}x${containerH}`,
-      marker,
-      zoom: clampedZoom.toFixed(4),
-      position: `(${Math.round(posX)}, ${Math.round(posY)})`,
-    })
-  }, [currentMap, containerSize])
-
-  // 图片加载完成后的回调
+  // ========== 图片加载完成 ==========
   const handleImageLoad = useCallback(() => {
-    console.log('Map image loaded:', currentMap?.assetName)
     setImageLoaded(true)
-
-    // 记录图片自然尺寸
     if (imgRef.current) {
       setImgNaturalSize({
         width: imgRef.current.naturalWidth,
         height: imgRef.current.naturalHeight,
       })
     }
-
-    // 如果 markerPos 已就绪且尚未定位，立即定位
-    if (markerPos && !positionedRef.current) {
+    if (!positionedRef.current) {
       positionedRef.current = true
-      positionedMarkerKeyRef.current = `${markerPos.x},${markerPos.y}`
-      fitToMarker(markerPos)
+      if (markerPos) {
+        positionedMarkerKeyRef.current = `${markerPos.x},${markerPos.y}`
+        fitToMarker(markerPos)
+      } else {
+        if (imgRef.current && containerRef.current) {
+          const imgW = imgRef.current.naturalWidth
+          const imgH = imgRef.current.naturalHeight
+          const cw = containerRef.current.clientWidth
+          const ch = containerRef.current.clientHeight
+          const baseZoom = Math.min(cw / imgW, ch / imgH) * 0.9
+          const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, baseZoom))
+          const newPos = {
+            x: cw / 2 - (imgW / 2) * clampedZoom,
+            y: ch / 2 - (imgH / 2) * clampedZoom,
+          }
+          zoomRef.current = clampedZoom
+          posRef.current = newPos
+          setZoom(clampedZoom)
+          setPosition(newPos)
+        }
+      }
     }
   }, [markerPos, currentMap, fitToMarker])
 
-  /**
-   * 关键修复：当 markerPos 异步到达时（图片已加载完毕），触发定位。
-   * 这解决了图片先于 markerPos 加载完成的竞态问题。
-   */
+  // markerPos 异步到达时触发定位
   useEffect(() => {
     if (!markerPos || !imageLoaded || !currentMap) return
-
     const markerKey = `${markerPos.x},${markerPos.y}`
-
-    // 如果是同一个 marker 且已定位过，跳过
     if (positionedRef.current && positionedMarkerKeyRef.current === markerKey) return
-
     positionedRef.current = true
     positionedMarkerKeyRef.current = markerKey
     fitToMarker(markerPos)
   }, [markerPos, imageLoaded, currentMap, fitToMarker])
 
-  // 切换地图时重置定位标记和图片状态
+  // 切换地图时重置
   useEffect(() => {
     positionedRef.current = false
     positionedMarkerKeyRef.current = null
@@ -244,7 +246,7 @@ export default function MapViewer({ coordX, coordY, coordZ, mapId: initialMapId,
     setImgNaturalSize({ width: 0, height: 0 })
   }, [currentMapId])
 
-  // 处理缓存图片：浏览器可能在 React 附加 onLoad 之前就加载完成
+  // 缓存图片可能已加载
   useEffect(() => {
     if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) {
       setImageLoaded(true)
@@ -255,118 +257,243 @@ export default function MapViewer({ coordX, coordY, coordZ, mapId: initialMapId,
     }
   }, [currentMap?.assetName])
 
-  // 缩放控制（以容器中心为缩放焦点）
-  const handleZoomAt = useCallback((newZoom: number, focalX?: number, focalY?: number) => {
+  // ========== 缩放控制（ref-based，零依赖） ==========
+  const applyZoom = useCallback((zoomFactor: number, mouseX?: number, mouseY?: number) => {
     if (!containerRef.current) return
     const { width, height } = containerRef.current.getBoundingClientRect()
-    // 默认以容器中心为焦点
-    const fx = focalX ?? width / 2
-    const fy = focalY ?? height / 2
-    setZoom(prev => {
-      const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom))
-      if (clamped === prev) return prev
-      // 缩放公式：保持焦点位置不变
-      // screenPoint = imgPoint * zoom + position
-      // 缩放前后 screenPoint 不变：imgPoint * oldZoom + oldPos = imgPoint * newPos + ... 
-      // newPos = focalScreen - (focalScreen - oldPos) * newZoom / oldZoom
-      setPosition(prevPos => ({
-        x: fx - (fx - prevPos.x) * clamped / prev,
-        y: fy - (fy - prevPos.y) * clamped / prev,
-      }))
-      return clamped
-    })
+    const prevZoom = zoomRef.current
+    const targetZoom = prevZoom * zoomFactor
+    const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetZoom))
+    if (clamped === prevZoom) return
+
+    const prevPos = posRef.current
+    const mPos = markerPosRef.current
+    const sx = scaleXRef.current
+    const sy = scaleYRef.current
+
+    let newPos: { x: number; y: number }
+    if (mPos) {
+      newPos = {
+        x: width / 2 - (mPos.x * sx) * clamped,
+        y: height / 2 - (mPos.y * sy) * clamped,
+      }
+    } else {
+      const fx = mouseX ?? width / 2
+      const fy = mouseY ?? height / 2
+      newPos = {
+        x: fx - (fx - prevPos.x) * clamped / prevZoom,
+        y: fy - (fy - prevPos.y) * clamped / prevZoom,
+      }
+    }
+
+    zoomRef.current = clamped
+    posRef.current = newPos
+    setZoom(clamped)
+    setPosition(newPos)
   }, [])
 
-  const handleZoomIn = useCallback(() => {
-    handleZoomAt(zoom + 0.25)
-  }, [handleZoomAt, zoom])
+  useEffect(() => { applyZoomRef.current = applyZoom }, [applyZoom])
 
-  const handleZoomOut = useCallback(() => {
-    handleZoomAt(zoom - 0.25)
-  }, [handleZoomAt, zoom])
+  const handleZoomIn = useCallback(() => applyZoom(1.25), [applyZoom])
+  const handleZoomOut = useCallback(() => applyZoom(0.8), [applyZoom])
 
   const handleReset = useCallback(() => {
     if (markerPos && containerSize.width > 0 && containerSize.height > 0) {
       fitToMarker(markerPos, containerSize.width, containerSize.height)
     } else {
+      zoomRef.current = 1
+      posRef.current = { x: 0, y: 0 }
       setZoom(1)
       setPosition({ x: 0, y: 0 })
     }
   }, [markerPos, fitToMarker, containerSize])
 
-  // 容器坐标转图片像素坐标
+  // ========== 坐标转换 ==========
   const containerToImage = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
     if (!containerRef.current) return null
     const rect = containerRef.current.getBoundingClientRect()
-    // 容器内坐标
     const cx = clientX - rect.left
     const cy = clientY - rect.top
-    // 反推图片像素坐标：screen = imgPixel * zoom + position
-    const imgX = (cx - position.x) / zoom
-    const imgY = (cy - position.y) / zoom
+    const p = posRef.current
+    const z = zoomRef.current
+    const imgX = (cx - p.x) / z
+    const imgY = (cy - p.y) / z
     if (isNaN(imgX) || isNaN(imgY)) return null
     return { x: imgX, y: imgY }
-  }, [position, zoom])
+  }, [])
 
-  // 拖拽控制
-  const handleMouseDown = (e: React.MouseEvent) => {
+  // ========== RAF 拖拽（核心性能优化） ==========
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
     setIsDragging(true)
-    setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y })
-  }
+    dragStartRef.current = {
+      x: e.clientX - posRef.current.x,
+      y: e.clientY - posRef.current.y,
+    }
+  }, [])
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDragging) {
-      setPosition({
-        x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y,
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging) return
+    const newX = e.clientX - dragStartRef.current.x
+    const newY = e.clientY - dragStartRef.current.y
+    posRef.current = { x: newX, y: newY }
+
+    if (rafRef.current === null) {
+      rafRef.current = requestAnimationFrame(() => {
+        setPosition({ ...posRef.current })
+        rafRef.current = null
       })
     }
-  }
+  }, [isDragging])
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     setIsDragging(false)
-  }
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    setPosition({ ...posRef.current })
+  }, [])
 
-  // 滚轮缩放（以鼠标位置为焦点）
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault()
-    if (!containerRef.current) return
-    const rect = containerRef.current.getBoundingClientRect()
-    const focalX = e.clientX - rect.left
-    const focalY = e.clientY - rect.top
-    const delta = e.deltaY < 0 ? 0.25 : -0.25
-    handleZoomAt(zoom + delta, focalX, focalY)
-  }
+  // ========== 非 passive wheel 监听器 ==========
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const handler = (e: WheelEvent) => {
+      e.preventDefault()
+      const rect = el.getBoundingClientRect()
+      applyZoomRef.current(
+        e.deltaY < 0 ? 1.15 : (1 / 1.15),
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+      )
+    }
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
+  }, [])
 
-  // 点击地图获取坐标
+  // ========== 触屏手势（拖拽 + 双指缩放） ==========
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      touchRef.current.isPinching = false
+      setIsDragging(true)
+      dragStartRef.current = {
+        x: e.touches[0].clientX - posRef.current.x,
+        y: e.touches[0].clientY - posRef.current.y,
+      }
+    } else if (e.touches.length === 2) {
+      touchRef.current.isPinching = true
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      touchRef.current.startDist = Math.sqrt(dx * dx + dy * dy)
+      touchRef.current.startZoom = zoomRef.current
+      touchRef.current.startX = (e.touches[0].clientX + e.touches[1].clientX) / 2
+      touchRef.current.startY = (e.touches[0].clientY + e.touches[1].clientY) / 2
+    }
+  }, [])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1 && !touchRef.current.isPinching) {
+      const newX = e.touches[0].clientX - dragStartRef.current.x
+      const newY = e.touches[0].clientY - dragStartRef.current.y
+      posRef.current = { x: newX, y: newY }
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          setPosition({ ...posRef.current })
+          rafRef.current = null
+        })
+      }
+    } else if (e.touches.length === 2 && touchRef.current.isPinching) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const factor = dist / touchRef.current.startDist
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, touchRef.current.startZoom * factor))
+
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect()
+        const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left
+        const my = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top
+        const prevZoom = zoomRef.current
+        const prevPos = posRef.current
+
+        const newPos = {
+          x: mx - (mx - prevPos.x) * newZoom / prevZoom,
+          y: my - (my - prevPos.y) * newZoom / prevZoom,
+        }
+        zoomRef.current = newZoom
+        posRef.current = newPos
+        setZoom(newZoom)
+        setPosition(newPos)
+      }
+    }
+  }, [])
+
+  const handleTouchEnd = useCallback(() => {
+    setIsDragging(false)
+    touchRef.current.isPinching = false
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    setPosition({ ...posRef.current })
+  }, [])
+
+  // ========== 点击地图获取坐标 ==========
   const handleMapClick = async (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!currentMap || isDragging) return
-
+    if (!currentMap || isDragging || !allowClickToMark) return
     const imgCoord = containerToImage(e.clientX, e.clientY)
     if (!imgCoord) return
-
-    // 只有在图片范围内的点击才有效
-    if (imgCoord.x < 0 || imgCoord.y < 0 ||
-        (currentMap.mapSize && imgCoord.x > currentMap.mapSize.width) ||
-        (currentMap.mapSize && imgCoord.y > currentMap.mapSize.height)) {
+    const originalX = imgCoord.x / scaleX
+    const originalY = imgCoord.y / scaleY
+    if (originalX < 0 || originalY < 0 ||
+        (currentMap.mapSize && originalX > currentMap.mapSize.width) ||
+        (currentMap.mapSize && originalY > currentMap.mapSize.height)) {
       return
     }
-
-    // 设置标记并居中
-    setMarkerPos(imgCoord)
-
-    // 反向转换为游戏坐标
+    positionedRef.current = true
+    positionedMarkerKeyRef.current = `${originalX},${originalY}`
+    setMarkerPos({ x: originalX, y: originalY })
     try {
-      const coordResult = await mapApi.pixelToCoord({
-        pixelX: imgCoord.x,
-        pixelY: imgCoord.y,
-        mapId: currentMap.id,
-      })
+      const coordResult = await mapApi.pixelToCoord({ pixelX: originalX, pixelY: originalY, mapId: currentMap.id })
       console.log('Game coordinates:', coordResult)
     } catch (error) {
       console.error('Failed to convert pixel to coord:', error)
     }
   }
+
+  // ========== 性能关键：视口裁剪 — 只渲染可见标记 ==========
+  const visibleMarkers = useMemo(() => {
+    if (markers.length === 0) return []
+
+    const cw = containerSize.width
+    const ch = containerSize.height
+    // 容器尺寸未知时渲染全部（降级）
+    if (cw === 0 || ch === 0) return markers
+
+    const z = zoom
+    const px = position.x
+    const py = position.y
+    const sx = scaleX
+    const sy = scaleY
+    const MARKER_SIZE = 60
+    const BUFFER = 120
+
+    return markers.filter(m => {
+      const screenX = m.x * sx * z + px
+      const screenY = m.y * sy * z + py
+      return screenX > -MARKER_SIZE - BUFFER &&
+             screenX < cw + BUFFER &&
+             screenY > -MARKER_SIZE - BUFFER &&
+             screenY < ch + BUFFER
+    })
+  }, [markers, zoom, position, containerSize, scaleX, scaleY])
+
+  // RAF 清理
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+    }
+  }, [])
 
   return (
     <div className="flex flex-col h-full min-h-0 flex-1">
@@ -377,27 +504,19 @@ export default function MapViewer({ coordX, coordY, coordZ, mapId: initialMapId,
           style={{ borderColor: scheme.borderLight }}
         >
           <div className="flex items-center gap-3">
-            {/* 地图选择 */}
             <select
               value={currentMapId || ''}
               onChange={(e) => handleMapChange(e.target.value)}
               className="px-3 py-1.5 rounded-lg text-sm bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 outline-none transition-colors cursor-pointer"
-              style={{
-                color: scheme.textPrimary,
-                border: `1px solid ${scheme.borderLight}`,
-              }}
+              style={{ color: scheme.textPrimary, border: `1px solid ${scheme.borderLight}` }}
             >
               {maps.map(map => (
                 <option key={map.id} value={map.id}>{map.name}</option>
               ))}
             </select>
-
-            {/* 区域显示切换 */}
             <button
               onClick={() => setShowRegions(prev => !prev)}
-              className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-colors ${
-                !showRegions ? 'bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10' : ''
-              }`}
+              className="px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-colors"
               style={{
                 background: showRegions ? scheme.primaryLight : undefined,
                 color: showRegions ? scheme.primary : scheme.textSecondary,
@@ -408,57 +527,43 @@ export default function MapViewer({ coordX, coordY, coordZ, mapId: initialMapId,
               区域
             </button>
           </div>
-
           <div className="flex items-center gap-2">
-            {/* 缩放控制 */}
-            <button
-              onClick={handleZoomOut}
-              className="p-1.5 rounded-lg transition-colors hover:bg-black/10 dark:hover:bg-white/10"
-              style={{ color: scheme.textSecondary }}
-            >
+            <button onClick={handleZoomOut} className="p-1.5 rounded-lg transition-colors hover:bg-black/10 dark:hover:bg-white/10" style={{ color: scheme.textSecondary }}>
               <ZoomOut className="w-4 h-4" />
             </button>
             <span className="text-sm min-w-[50px] text-center" style={{ color: scheme.textPrimary }}>
               {Math.round(zoom * 100)}%
             </span>
-            <button
-              onClick={handleZoomIn}
-              className="p-1.5 rounded-lg transition-colors hover:bg-black/10 dark:hover:bg-white/10"
-              style={{ color: scheme.textSecondary }}
-            >
+            <button onClick={handleZoomIn} className="p-1.5 rounded-lg transition-colors hover:bg-black/10 dark:hover:bg-white/10" style={{ color: scheme.textSecondary }}>
               <ZoomIn className="w-4 h-4" />
             </button>
-            <button
-              onClick={handleReset}
-              className="p-1.5 rounded-lg transition-colors hover:bg-black/10 dark:hover:bg-white/10"
-              style={{ color: scheme.textSecondary }}
-            >
+            <button onClick={handleReset} className="p-1.5 rounded-lg transition-colors hover:bg-black/10 dark:hover:bg-white/10" style={{ color: scheme.textSecondary }}>
               <RotateCcw className="w-4 h-4" />
             </button>
           </div>
         </div>
       )}
 
-      {/* 地图容器 - 始终渲染，确保 ResizeObserver 能绑定 */}
+      {/* 地图容器 */}
       <div
         ref={containerRef}
         className="flex-1 min-h-0 overflow-hidden relative cursor-grab select-none"
-        style={{ background: scheme.bgMain }}
+        style={{ background: scheme.bgMain, touchAction: 'none' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         onClick={handleMapClick}
       >
-        {/* 加载中覆盖层 */}
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center z-20" style={{ background: scheme.bgMain }}>
             <Loader2 className="w-8 h-8 animate-spin" style={{ color: scheme.primary }} />
           </div>
         )}
 
-        {/* 无地图数据 */}
         {!loading && !currentMap && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
@@ -468,37 +573,8 @@ export default function MapViewer({ coordX, coordY, coordZ, mapId: initialMapId,
           </div>
         )}
 
-        {/* 诊断面板 - 临时调试 */}
-        <div
-          style={{
-            position: 'absolute',
-            top: 8,
-            left: 8,
-            background: 'rgba(0,0,0,0.9)',
-            color: '#00ff00',
-            padding: '8px 12px',
-            borderRadius: 6,
-            zIndex: 9999,
-            fontSize: 11,
-            fontFamily: 'monospace',
-            whiteSpace: 'pre',
-            lineHeight: 1.5,
-            pointerEvents: 'none',
-          }}
-        >
-{`CONTAINER: ${containerSize.width} x ${containerSize.height}
-IMG NATURAL: ${imgNaturalSize.width} x ${imgNaturalSize.height}
-POSITION: (${Math.round(position.x)}, ${Math.round(position.y)})
-ZOOM: ${zoom.toFixed(4)}
-MARKER: ${markerPos ? `(${Math.round(markerPos.x)}, ${Math.round(markerPos.y)})` : 'null'}
-POSITIONED: ${positionedRef.current}
-IMG: ${currentMap?.assetName || 'null'}`}
-        </div>
-
-        {/* 地图内容 - 仅在 currentMap 存在时渲染 */}
         {currentMap && (
         <>
-        {/* 图片加载指示器 */}
         {!imageLoaded && (
           <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
             <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: scheme.bgCard + 'E6' }}>
@@ -507,31 +583,27 @@ IMG: ${currentMap?.assetName || 'null'}`}
             </div>
           </div>
         )}
+
+        {/* 地图变换层 — GPU 加速 */}
         <div
           style={{
             position: 'absolute',
             left: 0,
             top: 0,
             transformOrigin: '0 0',
-            transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
-            transition: isDragging ? 'none' : 'transform 0.15s ease-out',
-            willChange: 'transform',
+            transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${zoom})`,
+            transition: isDragging ? 'none' : 'transform 0.1s cubic-bezier(0.2, 0, 0, 1)',
+            willChange: isDragging ? 'transform' : 'auto',
           }}
         >
-          {/* 地图图片 - 不限制宽度，按原始尺寸渲染 */}
           <img
             ref={imgRef}
             src={currentMap.assetName}
             alt={currentMap.name}
             draggable={false}
-            style={{
-              display: 'block',
-            }}
+            style={{ display: 'block', maxWidth: 'none', maxHeight: 'none' }}
             onLoad={handleImageLoad}
-            onError={(e) => {
-              console.error('Map image failed to load:', currentMap.assetName)
-              setImageLoaded(true)
-            }}
+            onError={() => setImageLoaded(true)}
           />
 
           {/* 区域覆盖层 */}
@@ -542,49 +614,114 @@ IMG: ${currentMap?.assetName || 'null'}`}
               style={{
                 borderColor: scheme.primary + '80',
                 background: scheme.primary + '15',
-                left: Math.min(...region.polygon.map(p => p[0])),
-                top: Math.min(...region.polygon.map(p => p[1])),
-                width: Math.max(...region.polygon.map(p => p[0])) - Math.min(...region.polygon.map(p => p[0])),
-                height: Math.max(...region.polygon.map(p => p[1])) - Math.min(...region.polygon.map(p => p[1])),
+                left: Math.min(...region.polygon.map(p => p.x || 0)),
+                top: Math.min(...region.polygon.map(p => p.y || 0)),
+                width: Math.max(...region.polygon.map(p => p.x || 0)) - Math.min(...region.polygon.map(p => p.x || 0)),
+                height: Math.max(...region.polygon.map(p => p.y || 0)) - Math.min(...region.polygon.map(p => p.y || 0)),
               }}
             >
               <span
                 className="absolute top-1 left-1 text-xs px-1.5 py-0.5 rounded"
-                style={{
-                  background: scheme.bgCard + 'E6',
-                  color: scheme.textPrimary,
-                }}
+                style={{ background: scheme.bgCard + 'E6', color: scheme.textPrimary }}
               >
                 {region.name}
               </span>
             </div>
           ))}
 
-          {/* 位置标记 */}
+          {/* 视口裁剪后的标记点（核心优化：只渲染可见标记） */}
+          {visibleMarkers.map(marker => (
+            <div
+              key={marker.id}
+              className="absolute cursor-pointer hover:z-20"
+              style={{
+                left: marker.x * scaleX,
+                top: marker.y * scaleY,
+                transform: 'translate(-50%, -100%)',
+                zIndex: 10,
+              }}
+              onClick={(e) => { e.stopPropagation(); onMarkerClick?.(marker) }}
+            >
+              <div
+                className="relative group"
+                style={{
+                  transform: `scale(${inverseZoom})`,
+                  transformOrigin: 'center bottom',
+                }}
+              >
+                {marker.imageUrl ? (
+                  <>
+                    {/* 标记圆形头像（移除 backdrop-blur 降低 GPU 开销） */}
+                    <div
+                      className="w-10 h-10 rounded-full border-2 overflow-hidden group-hover:scale-110 transition-transform bg-white/80 p-0.5 relative z-10"
+                      style={{ borderColor: scheme.primary, boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }}
+                    >
+                      <img
+                        src={marker.imageUrl}
+                        className="w-full h-full object-cover rounded-full"
+                        alt="marker"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    </div>
+                    {/* 悬浮提示框（移除 backdrop-blur-xl） */}
+                    <div className="absolute left-1/2 -top-2 -translate-x-1/2 -translate-y-full opacity-0 pointer-events-none group-hover:opacity-100 group-hover:-translate-y-[120%] transition-all duration-200 z-50 flex flex-col items-center">
+                      <div
+                        className="p-1.5 rounded-xl flex flex-col gap-2 border"
+                        style={{
+                          background: isDark ? 'rgba(30, 30, 35, 0.92)' : 'rgba(255, 255, 255, 0.92)',
+                          borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
+                          boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.5)' : '0 8px 24px rgba(0,0,0,0.15)',
+                        }}
+                      >
+                        <div className="w-32 h-20 rounded-lg overflow-hidden shrink-0 bg-black/5">
+                          <img src={marker.imageUrl} className="w-full h-full object-cover" alt="preview" loading="lazy" />
+                        </div>
+                        <p className="text-xs font-medium px-1 text-center truncate w-32" style={{ color: scheme.textPrimary }}>
+                          {marker.title || '照片'}
+                        </p>
+                      </div>
+                      <div
+                        className="w-3 h-3 rotate-45 -mt-1.5 border-r border-b"
+                        style={{
+                          background: isDark ? 'rgba(30, 30, 35, 0.92)' : 'rgba(255, 255, 255, 0.92)',
+                          borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
+                        }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <MapPin
+                    className="w-8 h-8 drop-shadow-lg transition-transform group-hover:scale-110"
+                    style={{ color: scheme.primary }}
+                    fill={scheme.primary}
+                  />
+                )}
+              </div>
+            </div>
+          ))}
+
+          {/* 用户手动定位标记 */}
           {markerPos && (
             <div
               className="absolute pointer-events-none"
               style={{
-                left: markerPos.x,
-                top: markerPos.y,
+                left: markerPos.x * scaleX,
+                top: markerPos.y * scaleY,
                 transform: 'translate(-50%, -100%)',
               }}
             >
-              {/* 标记图标 */}
-              <div className="relative">
-                <MapPin
-                  className="w-8 h-8 drop-shadow-lg"
-                  style={{ color: scheme.error }}
-                  fill={scheme.error}
-                />
-                {/* 脉冲动画 */}
+              <div
+                className="relative"
+                style={{
+                  transform: `scale(${inverseZoom})`,
+                  transformOrigin: 'center bottom',
+                }}
+              >
+                <MapPin className="w-8 h-8 drop-shadow-lg" style={{ color: scheme.error }} fill={scheme.error} />
                 <div
                   className="absolute inset-0 rounded-full animate-ping"
-                  style={{
-                    background: scheme.error + '40',
-                    transform: 'scale(0.5)',
-                    transformOrigin: 'center bottom',
-                  }}
+                  style={{ background: scheme.error + '40', transform: 'scale(0.5)', transformOrigin: 'center bottom' }}
                 />
               </div>
             </div>
@@ -596,27 +733,20 @@ IMG: ${currentMap?.assetName || 'null'}`}
 
       {/* 底部信息栏 */}
       {detectedRegion && (
-        <div
-          className="px-4 py-3 border-t flex items-center justify-between"
-          style={{ borderColor: scheme.borderLight }}
-        >
+        <div className="px-4 py-3 border-t flex items-center justify-between" style={{ borderColor: scheme.borderLight }}>
           <div className="flex items-center gap-4">
             {detectedRegion.region && (
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4" style={{ color: scheme.primary }} />
-                <span className="text-sm" style={{ color: scheme.textPrimary }}>
-                  {detectedRegion.region.name}
-                </span>
+                <span className="text-sm" style={{ color: scheme.textPrimary }}>{detectedRegion.region.name}</span>
               </div>
             )}
             {coordX !== undefined && coordY !== undefined && (
               <div className="text-xs" style={{ color: scheme.textTertiary }}>
-                坐标: ({coordX.toFixed(1)}, {coordY.toFixed(1)}
-                {coordZ !== undefined && `, ${coordZ.toFixed(1)}`})
+                坐标: ({coordX.toFixed(1)}, {coordY.toFixed(1)}{coordZ !== undefined && `, ${coordZ.toFixed(1)}`})
               </div>
             )}
           </div>
-
           {markerPos && (
             <div className="text-xs" style={{ color: scheme.textTertiary }}>
               像素: ({Math.round(markerPos.x)}, {Math.round(markerPos.y)})

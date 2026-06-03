@@ -434,6 +434,27 @@ class TransferService {
 
       this.saveHistory()
 
+      // 将新文件加入图片库
+      ;(async () => {
+        try {
+          const AlbumModel = (await import('../models/Album')).default
+          const AlbumService = (await import('./AlbumService')).AlbumService
+          
+          let album = AlbumModel.findByPath(uploadDir)
+          if (!album) {
+            album = AlbumModel.create({
+              name: '局域网传输',
+              path: uploadDir,
+              type: 'custom',
+              description: '通过局域网上传的图片',
+            })
+          }
+          await AlbumService.scanAlbumImages(album.id, uploadDir)
+        } catch (err) {
+          logger.error('Failed to add uploaded image to gallery:', err)
+        }
+      })()
+
       res.json({
         success: true,
         file: {

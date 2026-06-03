@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import transferService from '../services/TransferService'
 import logger from '../utils/logger'
+import fs from 'fs'
 
 const router = Router()
 
@@ -30,14 +31,29 @@ router.get('/status', async (req: Request, res: Response) => {
 /**
  * 创建下载任务
  * POST /api/transfer/download
- * Body: { filePaths: string[] }
+ * Body: { imageIds: string[] }
  */
 router.post('/download', async (req: Request, res: Response) => {
   try {
-    const { filePaths } = req.body
+    const { imageIds } = req.body
 
-    if (!filePaths || !Array.isArray(filePaths) || filePaths.length === 0) {
-      return res.status(400).json({ error: 'filePaths array is required' })
+    if (!imageIds || !Array.isArray(imageIds) || imageIds.length === 0) {
+      return res.status(400).json({ error: 'imageIds array is required' })
+    }
+
+    // 引入 ImageService 获取文件路径
+    const ImageService = (await import('../services/ImageService')).ImageService
+    const filePaths: string[] = []
+    
+    for (const id of imageIds) {
+      const image = await ImageService.getImageById(id)
+      if (image && image.path && fs.existsSync(image.path)) {
+        filePaths.push(image.path)
+      }
+    }
+
+    if (filePaths.length === 0) {
+       return res.status(400).json({ error: 'No valid files found for the given IDs' })
     }
 
     // 确保服务器已启动

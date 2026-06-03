@@ -62,6 +62,55 @@ export class AlbumService {
     return AlbumModel.delete(id)
   }
 
+  // 获取叠纸官方相册分类名称
+  private static getGameAlbumName(dirPath: string): string {
+    const normalizedPath = dirPath.replace(/\\/g, '/')
+    
+    const nameMap: Record<string, string> = {
+      'Collage/CollagePhoto': '趣拼海报',
+      'Collage/HighQuality': '趣拼海报 (高质量)',
+      'Collage/LowQuality': '趣拼海报 (低质量)',
+      'ClockInPhoto': '世界巡游打卡照',
+      'CloudPhotos_LowQuality': '云端相册 (低质量)',
+      'CloudPhotos': '云端相册',
+      'CustomAvatar': '自定义头像',
+      'CustomCard': '自定义名片',
+      'CustomHomeBoardPhoto': '留言板照片',
+      'DIY': '星绘图册',
+      'HomeTemplatePhoto': '家园模板照片',
+      'MagazinePhotos': '旅行手账',
+      'NikkiPhotos_HighQuality': '大喵相册原图',
+      'NikkiPhotos_LowQuality': '大喵相册 (低质量)',
+      'PlantDyeing': '绿野随心染',
+      'ScreenShot': '快捷截图',
+      'XSdkQrCode': '游戏分享二维码',
+      'EditorPhoto': '编辑模式截图',
+      'CustomFurniturePhoto': '自定义家具',
+      'CustomWigetRT': '自定义小部件',
+      'MallPic': '商城宣传图',
+      'CustomConfigs': '自定义配置'
+    }
+
+    // 将长路径放前面，避免部分匹配被截断
+    const keys = Object.keys(nameMap).sort((a, b) => b.length - a.length)
+
+    for (const key of keys) {
+      if (normalizedPath.includes('/' + key + '/') || normalizedPath.endsWith('/' + key) || normalizedPath === key) {
+        return nameMap[key]
+      }
+      // 兼容一些可能的挂载点，例如末尾是数字uid的情况
+      if (normalizedPath.includes('/' + key)) {
+        // 如果剩下的部分只包含数字uid或者斜杠
+        const remaining = normalizedPath.substring(normalizedPath.indexOf('/' + key) + key.length + 1)
+        if (/^[\/\d]*$/.test(remaining)) {
+           return nameMap[key]
+        }
+      }
+    }
+
+    return ''
+  }
+
   // 扫描已配置的截图文件夹（从 settings.json 读取 screenshotFolders）
   static async scanConfiguredFolders(): Promise<Album[]> {
     const albums: Album[] = []
@@ -76,16 +125,23 @@ export class AlbumService {
       }
 
       let album = AlbumModel.findByPath(folderPath)
-      if (!album) {
-        // 从路径提取名称：取最后两级目录作为名称
+      const specificName = this.getGameAlbumName(folderPath)
+      const finalName = specificName || (() => {
         const parts = folderPath.replace(/\\/g, '/').split('/')
-        const name = parts.slice(-2).join(' / ') || path.basename(folderPath)
+        return `游戏相册 - ${parts.slice(-2).join(' / ') || path.basename(folderPath)}`
+      })()
+
+      if (!album) {
         album = AlbumModel.create({
-          name: `游戏相册 - ${name}`,
+          name: finalName,
           path: folderPath,
           type: 'game',
           description: `来自配置的截图目录: ${folderPath}`,
         })
+      } else if (album.name !== finalName && album.type === 'game') {
+        // 更新旧的相册名称
+        AlbumModel.update(album.id, { name: finalName })
+        album.name = finalName
       }
 
       await this.scanAlbumImages(album.id, folderPath)
@@ -101,15 +157,23 @@ export class AlbumService {
         if (folders.includes(dirPath)) continue
 
         let album = AlbumModel.findByPath(dirPath)
-        if (!album) {
+        const specificName = this.getGameAlbumName(dirPath)
+        const finalName = specificName || (() => {
           const relativePath = path.relative(gamePath, dirPath)
-          const name = relativePath.replace(/\\/g, '/') || path.basename(dirPath)
+          return `游戏相册 - ${relativePath.replace(/\\/g, '/') || path.basename(dirPath)}`
+        })()
+
+        if (!album) {
           album = AlbumModel.create({
-            name: `游戏相册 - ${name}`,
+            name: finalName,
             path: dirPath,
             type: 'game',
             description: `自动发现的截图目录: ${dirPath}`,
           })
+        } else if (album.name !== finalName && album.type === 'game') {
+          // 更新旧的相册名称
+          AlbumModel.update(album.id, { name: finalName })
+          album.name = finalName
         }
 
         await this.scanAlbumImages(album.id, dirPath)
@@ -122,36 +186,109 @@ export class AlbumService {
   }
 
   // 智能发现截图目录（不区分大小写，支持多级搜索）
-  private static async discoverScreenshotDirs(rootPath: string, maxDepth: number = 3): Promise<string[]> {
-    const results: string[] = []
-    const screenshotNames = ['screenshots', 'screenshot', 'screen shot', 'captures', 'photos']
+  private static async discoverScreenshotDirs(rootPath: string): Promise<string[]> {
+    const results: Set<string> = new Set()
+    
+    // 叠纸游戏官方相册固定路径格式
+    const knownPaths = [
+      'X6Game/ScreenShot',
+      'X6Game/Saved/GamePlayPhotos/*/NikkiPhotos_HighQuality',
+      'X6Game/Saved/GamePlayPhotos/*/MagazinePhotos',
+      'X6Game/Saved/GamePlayPhotos/*/ClockInPhoto',
+      'X6Game/Saved/GamePlayPhotos/*/Collage/CollagePhoto',
+      'X6Game/Saved/CustomAvatar/*',
+      'X6Game/Saved/CustomCard/*',
+      'X6Game/Saved/PlantDyeing',
+      'X6Game/Saved/DIY/*'
+    ]
 
-    const search = (dirPath: string, depth: number) => {
-      if (depth > maxDepth) return
-
-      try {
-        const entries = fs.readdirSync(dirPath, { withFileTypes: true })
-        for (const entry of entries) {
-          if (!entry.isDirectory()) continue
-
-          const dirName = entry.name.toLowerCase()
-          // 检查目录名是否匹配已知的截图目录名
-          if (screenshotNames.some(name => dirName === name || dirName.replace(/[_\-\s]/g, '') === name.replace(/\s/g, ''))) {
-            results.push(path.join(dirPath, entry.name))
+    // 处理通配符路径
+    for (const kp of knownPaths) {
+      if (kp.includes('*')) {
+        const parts = kp.split('/*/')
+        if (parts.length === 2) {
+          const basePath = path.join(rootPath, parts[0])
+          if (fs.existsSync(basePath)) {
+            try {
+              const dirs = fs.readdirSync(basePath, { withFileTypes: true })
+              for (const dir of dirs) {
+                if (dir.isDirectory()) {
+                  const targetPath = path.join(basePath, dir.name, parts[1])
+                  if (fs.existsSync(targetPath)) results.add(targetPath)
+                }
+              }
+            } catch (e) {}
           }
-
-          // 递归搜索（跳过隐藏目录和特殊目录）
-          if (!entry.name.startsWith('.') && depth < maxDepth) {
-            search(path.join(dirPath, entry.name), depth + 1)
+        } else if (kp.endsWith('/*')) {
+          const basePath = path.join(rootPath, kp.replace('/*', ''))
+          if (fs.existsSync(basePath)) {
+            try {
+              const dirs = fs.readdirSync(basePath, { withFileTypes: true })
+              for (const dir of dirs) {
+                if (dir.isDirectory()) results.add(path.join(basePath, dir.name))
+              }
+            } catch (e) {}
           }
         }
-      } catch (e) {
-        // 无权访问等错误，跳过
+      } else {
+        const exactPath = path.join(rootPath, kp)
+        if (fs.existsSync(exactPath)) {
+          results.add(exactPath)
+        }
       }
     }
 
+    // 依然保留深度为 4 的泛搜索作为兜底
+    const keywordList = [
+      'screenshot', 'screenshots', 'screen shot', 'screens', 
+      'gamescreenshot', 'album', 'albums', 'photo', 'photos', 
+      'gallery', 'snapshots', 'custom', 'user', 'capture', 'records', 'shots'
+    ]
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.bmp']
+
+    const search = (dirPath: string, depth: number) => {
+      if (depth > 4) return
+
+      try {
+        const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+        let hasImages = false;
+
+        for (const entry of entries) {
+          if (entry.isFile()) {
+            const ext = path.extname(entry.name).toLowerCase()
+            if (imageExtensions.includes(ext)) {
+              hasImages = true;
+              break;
+            }
+          }
+        }
+
+        const dirName = path.basename(dirPath).toLowerCase()
+        const isMatchKeyword = keywordList.some(k => dirName.includes(k))
+
+        if (hasImages && depth > 1) {
+          results.add(dirPath)
+        } else if (isMatchKeyword && depth > 1) {
+          results.add(dirPath)
+        }
+
+        for (const entry of entries) {
+          if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+            search(path.join(dirPath, entry.name), depth + 1)
+          }
+        }
+      } catch (e) {}
+    }
+
     search(rootPath, 1)
-    return results
+    
+    const paths = Array.from(results)
+    const filteredPaths = paths.filter(p1 => {
+      const hasSubAlbum = paths.some(p2 => p2 !== p1 && p2.startsWith(p1 + path.sep))
+      return !hasSubAlbum
+    })
+
+    return filteredPaths.length > 0 ? filteredPaths : paths
   }
 
   // 扫描游戏相册目录（兼容旧接口，传入 gamePath）
@@ -182,15 +319,22 @@ export class AlbumService {
 
     for (const dirPath of discovered) {
       let album = AlbumModel.findByPath(dirPath)
-      if (!album) {
+      const specificName = this.getGameAlbumName(dirPath)
+      const finalName = specificName || (() => {
         const relativePath = path.relative(gamePath, dirPath)
-        const name = relativePath.replace(/\\/g, '/') || path.basename(dirPath)
+        return `游戏相册 - ${relativePath.replace(/\\/g, '/') || path.basename(dirPath)}`
+      })()
+
+      if (!album) {
         album = AlbumModel.create({
-          name: `游戏相册 - ${name}`,
+          name: finalName,
           path: dirPath,
           type: 'game',
           description: `截图目录: ${dirPath}`,
         })
+      } else if (album.name !== finalName && album.type === 'game') {
+        AlbumModel.update(album.id, { name: finalName })
+        album.name = finalName
       }
 
       await this.scanAlbumImages(album.id, dirPath)

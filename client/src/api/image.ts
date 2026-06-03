@@ -21,13 +21,41 @@ export const getImages = async (filter: ImageFilter): Promise<ImageListResponse>
   }
 }
 
+export const getWardrobe = async (): Promise<number[]> => {
+  const response = await api.get('/images/wardrobe')
+  return response.data.data || response.data
+}
+
+// 衣柜详情（带封面和图片数量）
+export interface WardrobeItem {
+  clothesId: number
+  coverImageId: string
+  customCoverImageId: string | null
+  imageCount: number
+}
+
+export const getWardrobeDetail = async (): Promise<WardrobeItem[]> => {
+  const response = await api.get('/images/wardrobe/detail')
+  return response.data.data || []
+}
+
+export const setWardrobeCover = async (clothesId: number, imageId: string): Promise<void> => {
+  await api.put('/images/wardrobe/covers', { clothesId, imageId })
+}
+
+export const removeWardrobeCover = async (clothesId: number): Promise<void> => {
+  await api.delete(`/images/wardrobe/covers/${clothesId}`)
+}
+
 // 获取图片统计总数（不依赖分页）
-export const getImageStats = async (): Promise<{ total: number; aiProcessed: number }> => {
+export const getImageStats = async (): Promise<{ total: number; aiProcessed: number; favorites: number; trash: number }> => {
   const response = await api.get('/images/stats')
   const data = response.data.data || response.data
   return {
     total: data.total || 0,
-    aiProcessed: data.processed || 0,  // 后端字段名是 processed
+    aiProcessed: data.processed || 0,
+    favorites: data.favorites || 0,
+    trash: data.trash || 0,
   }
 }
 
@@ -63,6 +91,12 @@ export const getThumbnail = async (id: string, size: 'small' | 'medium' | 'large
     responseType: 'blob'
   })
   return URL.createObjectURL(response.data)
+}
+
+// 批量获取缩略图 URL 映射（返回 URL 路径而非 blob，利用浏览器 HTTP 缓存）
+export const batchGetThumbnailUrls = async (imageIds: string[]): Promise<Record<string, string>> => {
+  const response = await api.post('/images/thumbnails/batch', { imageIds })
+  return response.data.data || {}
 }
 
 export const downloadImage = async (id: string): Promise<void> => {

@@ -7,9 +7,10 @@ interface AlbumStore {
   currentAlbum: Album | null
   loading: boolean
   error: string | null
+  lastFetchedAt: number
   
   // Actions
-  fetchAlbums: () => Promise<void>
+  fetchAlbums: (force?: boolean) => Promise<void>
   selectAlbum: (id: string) => void
   createAlbum: (data: CreateAlbumDTO) => Promise<void>
   updateAlbum: (id: string, data: UpdateAlbumDTO) => Promise<void>
@@ -17,17 +18,22 @@ interface AlbumStore {
   scanGameAlbums: () => Promise<void>
 }
 
+const FRESHNESS_TTL = 30_000 // 30秒内数据视为新鲜
+
 export const useAlbumStore = create<AlbumStore>((set, get) => ({
   albums: [],
   currentAlbum: null,
   loading: false,
   error: null,
+  lastFetchedAt: 0,
 
-  fetchAlbums: async () => {
+  fetchAlbums: async (force = false) => {
+    // 数据新鲜且未强制刷新时跳过
+    if (!force && Date.now() - get().lastFetchedAt < FRESHNESS_TTL) return
     set({ loading: true, error: null })
     try {
       const albums = await albumApi.getAlbums()
-      set({ albums, loading: false })
+      set({ albums, loading: false, lastFetchedAt: Date.now() })
     } catch (error) {
       set({ 
         error: error instanceof Error ? error.message : '获取相册失败',

@@ -40,6 +40,10 @@ export default function ImagePreview({
   const [isEditorOpen, setIsEditorOpen] = useState(false)
   const [previewTags, setPreviewTags] = useState<{ id: string; nameZh: string; nameEn: string }[]>([])
 
+  // LQIP: 低分辨率占位图
+  const [fullImageLoaded, setFullImageLoaded] = useState(false)
+  const [currentImageId, setCurrentImageId] = useState(image.id)
+
   // 动画状态
   const [entering, setEntering] = useState(true)
   const [exiting, setExiting] = useState(false)
@@ -56,6 +60,32 @@ export default function ImagePreview({
     const raf = requestAnimationFrame(() => setEntering(false))
     return () => cancelAnimationFrame(raf)
   }, [])
+
+  // 图片切换时重置 LQIP 状态
+  useEffect(() => {
+    if (image.id !== currentImageId) {
+      setFullImageLoaded(false)
+      setCurrentImageId(image.id)
+    }
+  }, [image.id, currentImageId])
+
+  // 预加载前后各 1 张图的原图
+  useEffect(() => {
+    const preloadUrls: string[] = []
+    if (images && currentIndex !== undefined) {
+      if (currentIndex > 0) preloadUrls.push(`/api/images/${images[currentIndex - 1].id}/file`)
+      if (currentIndex < images.length - 1) preloadUrls.push(`/api/images/${images[currentIndex + 1].id}/file`)
+    }
+    const linkElements = preloadUrls.map(url => {
+      const link = document.createElement('link')
+      link.rel = 'preload'
+      link.as = 'image'
+      link.href = url
+      document.head.appendChild(link)
+      return link
+    })
+    return () => { linkElements.forEach(el => document.head.removeChild(el)) }
+  }, [images, currentIndex])
 
   // 加载标签
   useEffect(() => {
@@ -201,13 +231,16 @@ export default function ImagePreview({
   const imageStyle: React.CSSProperties = {
     transform: `scale(${zoom}) translate(${position.x / zoom}px, ${position.y / zoom}px)`,
     opacity: entering || exiting ? 0 : 1,
-    transition: isDragging ? 'transform 0.1s' : 'opacity 250ms ease, transform 250ms ease',
+    transition: isDragging ? 'none' : 'opacity 250ms ease, transform 350ms cubic-bezier(0.2, 0.8, 0.2, 1)',
+    filter: entering || exiting ? 'blur(10px)' : 'blur(0)',
   }
 
   const panelBase: React.CSSProperties = {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    backdropFilter: 'blur(12px)',
-    border: '1px solid rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    backdropFilter: 'blur(16px) saturate(150%)',
+    WebkitBackdropFilter: 'blur(16px) saturate(150%)',
+    border: `1px solid ${scheme.borderLight}40`,
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
   }
 
   const btnHover = (e: React.MouseEvent<HTMLButtonElement>, bg = 'rgba(255,255,255,0.15)') =>
@@ -286,12 +319,24 @@ export default function ImagePreview({
         onTouchEnd={handleTouchEnd}
         onClick={e => e.stopPropagation()}
       >
+        {/* LQIP: 低分辨率占位图（先显示，原图加载后淡出） */}
+        {!fullImageLoaded && (
+          <img
+            src={`/api/images/${image.id}/thumbnail?size=large`}
+            alt=""
+            className="absolute max-w-full max-h-full object-contain select-none"
+            style={{ ...imageStyle, filter: 'blur(20px)', transform: `${imageStyle.transform} scale(1.05)` }}
+            draggable={false}
+          />
+        )}
+        {/* 原图 */}
         <img
           src={`/api/images/${image.id}/file`}
           alt={image.filename}
           className="max-w-full max-h-full object-contain select-none"
-          style={imageStyle}
+          style={{ ...imageStyle, opacity: fullImageLoaded ? (imageStyle.opacity ?? 1) : 0, transition: 'opacity 300ms ease' }}
           draggable={false}
+          onLoad={() => setFullImageLoaded(true)}
         />
       </div>
 
@@ -416,6 +461,7 @@ export default function ImagePreview({
       {isEditorOpen && (
         <ImageEditor
           imageUrl={`/api/images/${image.id}/download`}
+          imageId={image.id}
           onClose={() => setIsEditorOpen(false)}
         />
       )}
